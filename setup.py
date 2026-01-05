@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 setup(
     name="hwatlib",
-    version="0.1.0",
+    version="0.2.0",
     package_dir={"": "hwatlib"},
     packages=find_packages(where="hwatlib"),
     install_requires=[
