@@ -1,0 +1,129 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,async,dns]"
+
+      - name: Run ruff
+        run: ruff check .
+
+  typecheck:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,async,dns]"
+
+      - name: Run mypy
+        run: mypy
+
+  tests:
+    name: Tests (py${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,async,dns]"
+
+      - name: Run pytest with coverage
+        run: |
+          pytest --cov=hwatlib --cov-report=term-missing --cov-report=xml
+
+      - name: Enforce changed-file coverage threshold
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.sha }}
+          CHANGED_FILE_COVERAGE_MIN: "80"
+        run: |
+          python -m coverage report --version
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" -- 'hwatlib/**/*.py' > changed_python_files.txt
+
+          if [ ! -s changed_python_files.txt ]; then
+            echo "No changed Python files under hwatlib/. Skipping changed-file coverage gate."
+            exit 0
+          fi
+
+          includes=$(paste -sd, changed_python_files.txt)
+          echo "Checking coverage for changed files: $includes"
+          python -m coverage report --include="$includes" --fail-under="$CHANGED_FILE_COVERAGE_MIN"
+
+      - name: Upload coverage.xml
+        if: matrix.python-version == '3.12'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: coverage.xml
+
+  packaging:
+    name: Packaging Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install packaging tools
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install build twine
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Twine metadata check
+        run: twine check dist/*
+
+      - name: Validate wheel install
+        run: |
+          python -m pip install --force-reinstall dist/*.whl
+          python -c "import hwatlib; print(hwatlib.__version__)"

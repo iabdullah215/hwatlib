@@ -138,6 +138,50 @@ Select a profile:
 hwat report example.com --profile default
 ```
 
+### Config Validation
+
+`hwatlib.config.load_config()` validates both TOML and environment values.
+Malformed or out-of-range values are ignored with a warning and safe defaults are used.
+
+If you want fail-fast behavior for CI or production hardening, enable strict mode:
+
+- Python API: `load_config(..., strict=True)`
+- Environment: `HWAT_CONFIG_STRICT=1`
+
+In strict mode, invalid/malformed/out-of-range config values raise `ValueError`.
+
+Validated HTTP fields and ranges:
+
+- `timeout`: `0.001..300.0`
+- `rate_limit_per_sec`: `0.001..10000.0` (or unset)
+- `max_concurrency`: `1..1000`
+- `retries`: `0..20`
+- `backoff_factor`: `0.0..60.0`
+- `verify`: strict boolean (`true/false`, `1/0`, `yes/no`, `on/off` for env)
+
+Environment overrides:
+
+- `HWAT_TIMEOUT`
+- `HWAT_VERIFY`
+- `HWAT_RATE_LIMIT_PER_SEC`
+- `HWAT_MAX_CONCURRENCY`
+- `HWAT_RETRIES`
+- `HWAT_BACKOFF_FACTOR`
+- `HWAT_CONFIG_STRICT`
+- `HWAT_PROXY_HTTP`
+- `HWAT_PROXY_HTTPS`
+- `HWAT_HEADERS_JSON`
+- `HWAT_COOKIES_JSON`
+
+Example:
+
+```bash
+export HWAT_TIMEOUT=7.5
+export HWAT_VERIFY=true
+export HWAT_MAX_CONCURRENCY=50
+export HWAT_HEADERS_JSON='{"User-Agent":"hwatlib"}'
+```
+
 Hwatlib is under continuous development and more features for pentesting, recon, exploitation, and post-exploitation will be added.
 
 ## Safer Defaults

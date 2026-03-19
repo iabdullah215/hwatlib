@@ -5,7 +5,7 @@ import socket
 import subprocess
 import warnings
 from datetime import datetime
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence
 
 import requests
 import urllib3
@@ -51,8 +51,8 @@ def resolve_host(target: str) -> Optional[str]:
             match = re.search(r"Address: (\d+\.\d+\.\d+\.\d+)", result)
             if match:
                 return match.group(1)
-        except Exception:
-            pass
+        except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
+            logger.debug("nslookup fallback failed target=%s error=%s", target, e)
 
         logger.error(f"Could not resolve host: {target}")
         return None
@@ -70,11 +70,12 @@ def grab_banner(ip: str, port: int, timeout: float = 3.0) -> str:
             s.sendall(b"HEAD / HTTP/1.0\r\n\r\n")
             banner = s.recv(1024).decode(errors="ignore")
             return banner.strip()
-    except Exception as e:
+    except (OSError, socket.timeout) as e:
+        logger.debug("Banner grab failed ip=%s port=%s error=%s", ip, port, e)
         return f"Banner grab failed: {e}"
 
 
-def run_command(command: str) -> Optional[str]:
+def run_command(command: Sequence[str] | str) -> Optional[str]:
     """Run a system command safely (no shell) and return its output.
 
     This is intentionally *not* a shell helper. If you pass a string, it will
@@ -91,31 +92,32 @@ def run_command(command: str) -> Optional[str]:
 
         result = subprocess.run(argv, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         return result.stdout.strip() if result.stdout else result.stderr.strip()
-    except Exception as e:
-        logger.error(f"Command execution failed: {e}")
+    except ValueError as e:
+        logger.error("Command parsing failed command=%r error=%s", command, e)
+        return None
+    except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
+        logger.error("Command execution failed command=%r error=%s", command, e)
         return None
 
 
 def run_command_unsafe_shell(command: str) -> Optional[str]:
-    """Run a system command through the shell (unsafe).
+    """Deprecated compatibility wrapper.
 
-    Prefer run_command() whenever possible.
+    For security, shell execution is disabled. This helper now delegates to
+    run_command(), which executes without a shell.
     """
 
-    try:
-        result = subprocess.run(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        return result.stdout.strip() if result.stdout else result.stderr.strip()
-    except Exception as e:
-        logger.error(f"Shell command execution failed: {e}")
-        return None
+    logger.warning("run_command_unsafe_shell() is deprecated; executing without shell")
+    return run_command(command)
 
 
 def check_sudo() -> bool:
     """Check if the current user has sudo privileges."""
     try:
-        result = subprocess.run("sudo -n true", shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(["sudo", "-n", "true"], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         return result.returncode == 0
-    except Exception:
+    except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
+        logger.debug("Sudo check failed error=%s", e)
         return False
 
 
@@ -132,8 +134,8 @@ def fetch_url(url: str, timeout: int = 5, *, verify: bool = True, suppress_insec
 
         resp = requests.get(url, timeout=timeout, verify=verify)
         return resp.text
-    except Exception as e:
-        logger.error(f"Failed to fetch {url}: {e}")
+    except requests.RequestException as e:
+        logger.error("Failed to fetch url=%s: %s", url, e)
         return None
 
 
@@ -153,5 +155,5 @@ def save_to_file(filename: str, data: str) -> None:
         with open(filename, "a", encoding="utf-8") as f:
             f.write(data + "\n")
         logger.info(f"Data saved to {filename}")
-    except Exception as e:
-        logger.error(f"Could not save file {filename}: {e}")
+    except OSError as e:
+        logger.error("Could not save file filename=%s error=%s", filename, e)

@@ -2,9 +2,10 @@ import argparse
 import asyncio
 import re
 import socket
+import shlex
 import subprocess
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from .utils import resolve_host, setup_logger
 from .models import NmapResult
@@ -22,9 +23,6 @@ class ReconSession:
     nmap_output: Optional[str] = None
     open_tcp: Optional[List[int]] = None
     open_udp: Optional[List[int]] = None
-
-
-_session: Optional[ReconSession] = None
 
 
 def _is_ipv4(value: str) -> bool:
@@ -55,11 +53,11 @@ def resolve_target(target: str, ip: Optional[str] = None, *, add_to_hosts: bool 
     return None
 
 
-def run_nmap(target: str, options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False) -> Tuple[str, List[int], List[int]]:
-    """Run Nmap and return output plus open ports lists."""
+def run_nmap(target: str, options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False) -> NmapResult:
+    """Run Nmap and return a typed result contract."""
 
     try:
-        output = subprocess.check_output(["nmap"] + options.split() + [target], stderr=subprocess.STDOUT).decode(
+        output = subprocess.check_output(["nmap"] + shlex.split(options) + [target], stderr=subprocess.STDOUT).decode(
             errors="ignore"
         )
 
@@ -76,9 +74,9 @@ def run_nmap(target: str, options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False
                 if re.match(r"^\d+/udp\s+open", line):
                     open_udp.append(int(line.split("/")[0]))
 
-        return output, open_tcp, open_udp
+        return NmapResult(ok=True, output=output, open_tcp=open_tcp, open_udp=open_udp)
     except Exception as e:
-        return f"[-] Nmap failed: {e}", [], []
+        return NmapResult(ok=False, output="", open_tcp=[], open_udp=[], error=str(e))
 
 
 def _banner_grab_ports(host: str, ports: List[int]) -> Dict[int, Optional[str]]:
@@ -107,77 +105,90 @@ def _banner_grab_ports(host: str, ports: List[int]) -> Dict[int, Optional[str]]:
 # README-compatible convenience API
 # ----------------
 
-def init(target: str, *, add_to_hosts: bool = False, ip: Optional[str] = None) -> Optional[str]:
-    """Initialize a global recon session (README: recon.init(...))."""
+def init(target: str, *, add_to_hosts: bool = False, ip: Optional[str] = None) -> Optional[ReconSession]:
+    """Initialize and return a recon session context."""
 
-    global _session
     resolved = resolve_target(target, ip=ip, add_to_hosts=add_to_hosts)
     if not resolved:
         logger.error("Could not resolve target: %s", target)
-        _session = None
         return None
 
-    _session = ReconSession(target=target, ip=resolved, open_tcp=[], open_udp=[])
-    return resolved
+    return ReconSession(target=target, ip=resolved, open_tcp=[], open_udp=[])
 
 
-def nmap_scan(options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False, *, target: Optional[str] = None):
-    """Run an Nmap scan using the initialized session (README: recon.nmap_scan())."""
+def _resolve_scan_target(
+    *,
+    target: Optional[str],
+    session: Optional[ReconSession],
+    caller: str,
+) -> str:
+    if target is not None:
+        return target
+    if session is not None:
+        return session.ip
+    raise RuntimeError(f"{caller} requires either target=... or session=...")
 
-    global _session
 
-    if target is None:
-        if not _session:
-            raise RuntimeError("recon.init(target) must be called before recon.nmap_scan()")
-        target = _session.ip
+def nmap_scan(
+    options: str = DEFAULT_NMAP_OPTIONS,
+    udp: bool = False,
+    *,
+    target: Optional[str] = None,
+    session: Optional[ReconSession] = None,
+)-> NmapResult:
+    """Run an Nmap scan using explicit target/session context."""
+
+    target = _resolve_scan_target(target=target, session=session, caller="recon.nmap_scan")
 
     logger.info("Running nmap against %s", target)
 
-    output, open_tcp, open_udp = run_nmap(target, options=options, udp=udp)
+    nmap_result = run_nmap(target, options=options, udp=udp)
 
-    if _session and target == _session.ip:
-        _session.nmap_output = output
-        _session.open_tcp = open_tcp
-        _session.open_udp = open_udp
+    if session is not None and target == session.ip:
+        session.nmap_output = nmap_result.output
+        session.open_tcp = list(nmap_result.open_tcp)
+        session.open_udp = list(nmap_result.open_udp)
 
-    return output
-
-
-def nmap_scan_typed(options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False, *, target: Optional[str] = None) -> NmapResult:
-    global _session
-
-    if target is None:
-        if not _session:
-            raise RuntimeError("recon.init(target) must be called before recon.nmap_scan_typed()")
-        target = _session.ip
-
-    try:
-        output, open_tcp, open_udp = run_nmap(target, options=options, udp=udp)
-        if _session and target == _session.ip:
-            _session.nmap_output = output
-            _session.open_tcp = open_tcp
-            _session.open_udp = open_udp
-        return NmapResult(ok=True, output=output, open_tcp=open_tcp, open_udp=open_udp)
-    except Exception as e:
-        return NmapResult(ok=False, output="", error=str(e))
+    return nmap_result
 
 
-def banner_grab(host: Optional[str] = None, ports: Optional[List[int]] = None):
+def nmap_scan_typed(
+    options: str = DEFAULT_NMAP_OPTIONS,
+    udp: bool = False,
+    *,
+    target: Optional[str] = None,
+    session: Optional[ReconSession] = None,
+) -> NmapResult:
+    target = _resolve_scan_target(target=target, session=session, caller="recon.nmap_scan_typed")
+    result = run_nmap(target, options=options, udp=udp)
+    if session is not None and target == session.ip:
+        session.nmap_output = result.output
+        session.open_tcp = list(result.open_tcp)
+        session.open_udp = list(result.open_udp)
+    return result
+
+
+def banner_grab(
+    host: Optional[str] = None,
+    ports: Optional[List[int]] = None,
+    *,
+    session: Optional[ReconSession] = None,
+):
     """Grab banners.
 
     Supports both:
-    - README style: recon.banner_grab() (uses last scan session)
+    - Context style: recon.banner_grab(session=s)
     - Explicit style: recon.banner_grab(host, ports)
     """
 
     if host is not None and ports is not None:
         return _banner_grab_ports(host, ports)
 
-    if not _session:
-        raise RuntimeError("recon.init(target) must be called before recon.banner_grab()")
+    if session is None:
+        raise RuntimeError("recon.banner_grab() requires host+ports or session=...")
 
-    session_ports = _session.open_tcp or []
-    return _banner_grab_ports(_session.ip, session_ports)
+    session_ports = session.open_tcp or []
+    return _banner_grab_ports(session.ip, session_ports)
 
 
 async def banner_grab_async(
@@ -221,16 +232,16 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--udp", action="store_true", help="Also run a UDP scan")
     args = parser.parse_args(argv)
 
-    ip = init(args.target, add_to_hosts=args.add_to_hosts)
-    if not ip:
+    session = init(args.target, add_to_hosts=args.add_to_hosts)
+    if not session:
         print("[-] Could not resolve target")
         return 2
 
-    output = nmap_scan(options=args.options, udp=args.udp)
-    print(output)
+    nmap_result = nmap_scan(options=args.options, udp=args.udp, session=session)
+    print(nmap_result.output if nmap_result.ok else f"[-] Nmap failed: {nmap_result.error}")
 
-    if _session and _session.open_tcp:
-        banners = _banner_grab_ports(_session.ip, _session.open_tcp)
+    if session.open_tcp:
+        banners = _banner_grab_ports(session.ip, session.open_tcp)
         for port, banner in banners.items():
             if banner:
                 print(f"{port}/tcp: {banner}")

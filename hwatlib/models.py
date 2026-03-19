@@ -37,10 +37,12 @@ class NmapResult:
 @dataclass
 class ReconResult:
     target: str
+    ok: bool = True
     ip: Optional[str] = None
     nmap: Optional[NmapResult] = None
     banners: Dict[int, Optional[str]] = field(default_factory=dict)
     fingerprint: Dict[str, Any] = field(default_factory=dict)
+    error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -67,9 +69,11 @@ class ZoneTransferResult:
 
 @dataclass
 class DnsResultTyped:
+    ok: bool = True
     subdomains: Dict[str, str] = field(default_factory=dict)
     reverse: Dict[str, str] = field(default_factory=dict)
     zone_transfer: Optional[ZoneTransferResult] = None
+    error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         d = asdict(self)
@@ -212,11 +216,15 @@ class PrivescScore:
 
 @dataclass
 class PrivescResult:
+    ok: bool = True
     raw: Dict[str, Any] = field(default_factory=dict)
     score: Optional[PrivescScore] = None
+    error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
+            "ok": self.ok,
+            "error": self.error,
             "raw": dict(self.raw),
             "score": None if self.score is None else self.score.to_dict(),
         }

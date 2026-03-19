@@ -10,6 +10,7 @@ from pathlib import Path
 
 import requests
 from bs4 import BeautifulSoup
+from xml.etree import ElementTree as ET
 
 from .http import HttpClient
 from .async_http import AsyncHttpClient
@@ -35,6 +36,37 @@ def _normalize_target(target: str) -> str:
     return target if target.startswith("http://") or target.startswith("https://") else "http://" + target
 
 
+def _parse_forms_from_html(html: str) -> List[WebForm]:
+    soup = BeautifulSoup(html or "", HTML_PARSER)
+    forms: List[WebForm] = []
+    for form in soup.find_all("form"):
+        action = form.get("action")
+        method = (form.get("method") or "GET").upper()
+        inputs: List[WebFormField] = []
+        for i in form.find_all(["input", "textarea", "select"]):
+            inputs.append(WebFormField(name=i.get("name"), type=i.get("type"), value=i.get("value")))
+        forms.append(WebForm(action=action, method=method, inputs=inputs))
+    return forms
+
+
+def _extract_script_urls(base: str, html: str) -> List[str]:
+    soup = BeautifulSoup(html or "", HTML_PARSER)
+    scripts: List[str] = []
+    for tag in soup.find_all("script"):
+        src = tag.get("src")
+        if src:
+            scripts.append(urllib.parse.urljoin(base, src))
+    return scripts
+
+
+def _build_web_fetch_result(base: str, headers: Dict[str, Any], html: str) -> WebFetchResult:
+    return WebFetchResult(
+        headers={str(k): str(v) for k, v in (headers or {}).items()},
+        forms=_parse_forms_from_html(html),
+        js=_extract_script_urls(base, html),
+    )
+
+
 def canonicalize_url(url: str) -> str:
     """Canonicalize a URL for dedupe purposes (best-effort)."""
 
@@ -46,7 +78,8 @@ def canonicalize_url(url: str) -> str:
         query = urllib.parse.urlencode(sorted(urllib.parse.parse_qsl(u.query, keep_blank_values=True)))
         # drop fragments
         return urllib.parse.urlunsplit((scheme, netloc, path, query, ""))
-    except Exception:
+    except ValueError as e:
+        logger.debug("URL canonicalization failed url=%s error=%s", url, e)
         return url
 
 
@@ -76,7 +109,7 @@ class WebScanner:
                     self.found_links.append(abs_url)
                     logger.info("[link] %s", abs_url)
                     self._crawl(abs_url, depth - 1)
-        except Exception as e:
+        except requests.RequestException as e:
             logger.warning("Crawl error: %s", e)
 
     # ---------------- DIRECTORY BRUTEFORCE ----------------
@@ -93,20 +126,21 @@ class WebScanner:
                     r = self.session.get(url, timeout=3)
                     if r.status_code == 200:
                         logger.info("[dir] %s (%s)", url, r.status_code)
-                except Exception:
-                    pass
+                except requests.RequestException as e:
+                    logger.debug("Dir bruteforce request failed url=%s error=%s", url, e)
 
     # ---------------- PARAMETER DISCOVERY ----------------
-    def param_discovery(self, params=["id", "page", "q", "file"]):
+    def param_discovery(self, params: Optional[List[str]] = None):
         logger.info("Parameter discovery on %s", self.target)
-        for p in params:
+        scan_params = params if params is not None else ["id", "page", "q", "file"]
+        for p in scan_params:
             url = f"{self.target}?{p}=test"
             try:
                 r = self.session.get(url, timeout=3)
                 if r.status_code == 200:
                     logger.info("[param] %s -> %s bytes", url, len(r.text))
-            except Exception:
-                pass
+            except requests.RequestException as e:
+                logger.debug("Param discovery request failed url=%s error=%s", url, e)
 
     # ---------------- HEADER ANALYSIS ----------------
     def analyze_headers(self):
@@ -126,7 +160,7 @@ class WebScanner:
                     missing.append(sec)
             if missing:
                 logger.warning("Missing security headers: %s", ", ".join(missing))
-        except Exception as e:
+        except requests.RequestException as e:
             logger.warning("Header analysis failed: %s", e)
 
     # ---------------- BASIC VULN CHECKS ----------------
@@ -138,8 +172,8 @@ class WebScanner:
             r = self.session.get(url, timeout=5)
             if payload in r.text:
                 logger.warning("[VULN] Reflected XSS at %s", url)
-        except Exception:
-            pass
+        except requests.RequestException as e:
+            logger.debug("XSS check request failed url=%s error=%s", url, e)
 
     def check_sqli(self, param="id"):
         logger.info("Testing for SQLi on param %s", param)
@@ -150,8 +184,8 @@ class WebScanner:
                 r = self.session.get(url, timeout=5)
                 if re.search(r"(SQL|syntax|database|mysql|odbc)", r.text, re.I):
                     logger.warning("[VULN] Possible SQLi at %s", url)
-            except Exception:
-                pass
+            except requests.RequestException as e:
+                logger.debug("SQLi check request failed url=%s error=%s", url, e)
 
     def check_lfi(self, param="file"):
         logger.info("Testing for LFI on param %s", param)
@@ -162,8 +196,8 @@ class WebScanner:
                 r = self.session.get(url, timeout=5)
                 if "root:" in r.text or "[extensions]" in r.text:
                     logger.warning("[VULN] LFI at %s", url)
-            except Exception:
-                pass
+            except requests.RequestException as e:
+                logger.debug("LFI check request failed url=%s error=%s", url, e)
 
 
 # ----------------
@@ -188,34 +222,12 @@ def fetch_forms(url: str, *, timeout: int = 5, session: Optional[requests.Sessio
 
     s = session or requests.Session()
     r = s.get(_normalize_target(url), timeout=timeout)
-    soup = BeautifulSoup(r.text, HTML_PARSER)
-    forms: List[WebForm] = []
-
-    for form in soup.find_all("form"):
-        action = form.get("action")
-        method = (form.get("method") or "GET").upper()
-        inputs: List[WebFormField] = []
-        for i in form.find_all(["input", "textarea", "select"]):
-            inputs.append(WebFormField(name=i.get("name"), type=i.get("type"), value=i.get("value")))
-        forms.append(WebForm(action=action, method=method, inputs=inputs))
-
-    return forms
+    return _parse_forms_from_html(r.text)
 
 
 def fetch_forms_http(url: str, *, client: HttpClient, timeout: int = 5) -> List[WebForm]:
     r = client.get(_normalize_target(url), timeout=timeout)
-    soup = BeautifulSoup(r.text, HTML_PARSER)
-    forms: List[WebForm] = []
-
-    for form in soup.find_all("form"):
-        action = form.get("action")
-        method = (form.get("method") or "GET").upper()
-        inputs: List[WebFormField] = []
-        for i in form.find_all(["input", "textarea", "select"]):
-            inputs.append(WebFormField(name=i.get("name"), type=i.get("type"), value=i.get("value")))
-        forms.append(WebForm(action=action, method=method, inputs=inputs))
-
-    return forms
+    return _parse_forms_from_html(r.text)
 
 
 def fetch_js(url: str, *, timeout: int = 5, session: Optional[requests.Session] = None) -> List[str]:
@@ -224,29 +236,13 @@ def fetch_js(url: str, *, timeout: int = 5, session: Optional[requests.Session] 
     s = session or requests.Session()
     base = _normalize_target(url)
     r = s.get(base, timeout=timeout)
-    soup = BeautifulSoup(r.text, HTML_PARSER)
-
-    scripts: List[str] = []
-    for tag in soup.find_all("script"):
-        src = tag.get("src")
-        if src:
-            scripts.append(urllib.parse.urljoin(base, src))
-
-    return scripts
+    return _extract_script_urls(base, r.text)
 
 
 def fetch_js_http(url: str, *, client: HttpClient, timeout: int = 5) -> List[str]:
     base = _normalize_target(url)
     r = client.get(base, timeout=timeout)
-    soup = BeautifulSoup(r.text, HTML_PARSER)
-
-    scripts: List[str] = []
-    for tag in soup.find_all("script"):
-        src = tag.get("src")
-        if src:
-            scripts.append(urllib.parse.urljoin(base, src))
-
-    return scripts
+    return _extract_script_urls(base, r.text)
 
 
 def fetch_all(url: str, *, timeout: int = 5, client: Optional[HttpClient] = None) -> WebFetchResult:
@@ -255,19 +251,14 @@ def fetch_all(url: str, *, timeout: int = 5, client: Optional[HttpClient] = None
     If client is provided, uses the shared HttpClient options (timeout, verify, proxies, retries).
     """
 
+    base = _normalize_target(url)
     if client is not None:
-        return WebFetchResult(
-            headers=fetch_headers_http(url, timeout=timeout, client=client),
-            forms=fetch_forms_http(url, timeout=timeout, client=client),
-            js=fetch_js_http(url, timeout=timeout, client=client),
-        )
+        r = client.get(base, timeout=timeout)
+        return _build_web_fetch_result(base, r.headers, r.text)
 
     s = requests.Session()
-    return WebFetchResult(
-        headers=fetch_headers(url, timeout=timeout, session=s),
-        forms=fetch_forms(url, timeout=timeout, session=s),
-        js=fetch_js(url, timeout=timeout, session=s),
-    )
+    r = s.get(base, timeout=timeout)
+    return _build_web_fetch_result(base, r.headers, r.text)
 
 
 def fetch_all_dict(url: str, *, timeout: int = 5, client: Optional[HttpClient] = None) -> Dict[str, Any]:
@@ -283,25 +274,7 @@ async def fetch_all_async(url: str, *, client: Optional[AsyncHttpClient] = None)
             return await fetch_all_async(base, client=c)
 
     r = await client.get(base)
-    headers = dict(r.headers)
-    soup = BeautifulSoup(r.text, HTML_PARSER)
-
-    forms: List[Dict[str, Any]] = []
-    for form in soup.find_all("form"):
-        action = form.get("action")
-        method = (form.get("method") or "GET").upper()
-        inputs: List[WebFormField] = []
-        for i in form.find_all(["input", "textarea", "select"]):
-            inputs.append(WebFormField(name=i.get("name"), type=i.get("type"), value=i.get("value")))
-        forms.append(WebForm(action=action, method=method, inputs=inputs))
-
-    scripts: List[str] = []
-    for tag in soup.find_all("script"):
-        src = tag.get("src")
-        if src:
-            scripts.append(urllib.parse.urljoin(base, src))
-
-    return WebFetchResult(headers=headers, forms=forms, js=scripts)
+    return _build_web_fetch_result(base, r.headers, r.text)
 
 
 async def fetch_all_async_dict(url: str, *, client: Optional[AsyncHttpClient] = None) -> Dict[str, Any]:
@@ -379,7 +352,8 @@ async def _fetch_batch(fetcher, urls: List[str]) -> List[tuple[str, Optional[str
     async def fetch_one(u: str):
         try:
             return u, await fetcher(u)
-        except Exception:
+        except Exception as e:
+            logger.debug("Async crawl fetch failed url=%s error=%s", u, e)
             return u, None
 
     return await asyncio.gather(*(fetch_one(u) for u in urls))
@@ -437,7 +411,11 @@ def _crawl_collect(base: str, depth: int, fetcher) -> List[str]:
 
         try:
             html = fetcher(current)
-        except Exception:
+        except requests.RequestException as e:
+            logger.debug("Crawl fetch failed url=%s error=%s", current, e)
+            continue
+        except Exception as e:
+            logger.debug("Crawl fetcher failed url=%s error=%s", current, e)
             continue
 
         for link in _extract_links(base, current, html):
@@ -532,7 +510,11 @@ def _fetch_text(url: str, *, client: Optional[HttpClient], timeout: int) -> Opti
         if client is not None:
             return client.get(url, timeout=timeout).text
         return requests.get(url, timeout=timeout).text
-    except Exception:
+    except requests.RequestException as e:
+        logger.debug("Failed fetching text url=%s error=%s", url, e)
+        return None
+    except Exception as e:
+        logger.debug("Unexpected fetch_text error url=%s error=%s", url, e)
         return None
 
 
@@ -540,7 +522,8 @@ async def _fetch_text_async(url: str, *, client: AsyncHttpClient) -> Optional[st
     try:
         r = await client.get(url)
         return r.text
-    except Exception:
+    except Exception as e:
+        logger.debug("Failed fetching async text url=%s error=%s", url, e)
         return None
 
 
@@ -558,15 +541,17 @@ def _parse_robots_sitemaps(text: str, base: str) -> List[str]:
 
 def _parse_sitemap_xml_locs(text: str) -> List[str]:
     try:
-        import xml.etree.ElementTree as ET
-
         root = ET.fromstring(text)
         out: List[str] = []
         for el in root.iter():
             if el.tag.lower().endswith("loc") and el.text:
                 out.append(canonicalize_url(el.text.strip()))
         return out
-    except Exception:
+    except ET.ParseError as e:
+        logger.debug("Sitemap XML parse failed error=%s", e)
+        return []
+    except Exception as e:
+        logger.debug("Unexpected sitemap parsing error=%s", e)
         return []
 
 
@@ -577,7 +562,8 @@ def fingerprint_tech(url: str, *, client: Optional[HttpClient] = None, timeout: 
 
     try:
         r = client.get(base, timeout=timeout) if client is not None else requests.get(base, timeout=timeout)
-    except Exception as e:
+    except requests.RequestException as e:
+        logger.exception("Technology fingerprint request failed url=%s: %s", base, e)
         return TechFingerprint(ok=False, error=str(e))
 
     headers = {k.lower(): v for k, v in r.headers.items()}
@@ -608,6 +594,7 @@ async def fingerprint_tech_async(url: str, *, client: Optional[AsyncHttpClient] 
     try:
         r = await client.get(base)
     except Exception as e:
+        logger.exception("Async technology fingerprint request failed url=%s: %s", base, e)
         return TechFingerprint(ok=False, error=str(e))
 
     headers = {k.lower(): v for k, v in (r.headers or {}).items()}
@@ -634,6 +621,7 @@ def scan(url: str, *, client: Optional[HttpClient] = None, timeout: int = 5, dep
         sitemap = crawl(url, depth=depth, client=client, timeout=timeout)
         return WebResult(ok=True, fetch=fetch, tech=tech, sitemap=sitemap)
     except Exception as e:
+        logger.exception("Web scan failed url=%s depth=%s: %s", url, depth, e)
         return WebResult(ok=False, error=str(e))
 
 
@@ -650,6 +638,7 @@ async def scan_async(url: str, *, client: Optional[AsyncHttpClient] = None, dept
         )
         return WebResult(ok=True, fetch=fetch, tech=tech, sitemap=sitemap)
     except Exception as e:
+        logger.exception("Async web scan failed url=%s depth=%s: %s", base, depth, e)
         return WebResult(ok=False, error=str(e))
 
 

@@ -2,14 +2,17 @@ from __future__ import annotations
 
 import asyncio
 import socket
-from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Optional
 
 from typing import TYPE_CHECKING
 
 from .utils import resolve_host
+from .utils import setup_logger
 
 from .models import DnsResultTyped, ZoneTransferResult
+
+
+logger = setup_logger()
 
 if TYPE_CHECKING:  # pragma: no cover
     import dns.query  # type: ignore
@@ -17,18 +20,12 @@ if TYPE_CHECKING:  # pragma: no cover
     import dns.zone  # type: ignore
 
 
-@dataclass
-class DnsResult:
-    subdomains: Dict[str, str]
-    reverse: Dict[str, str]
-    zone_transfer: Dict[str, Any]
-
-
 def reverse_lookup(ip: str) -> Optional[str]:
     try:
         name, _aliases, _ips = socket.gethostbyaddr(ip)
         return name
-    except Exception:
+    except (socket.herror, socket.gaierror, OSError):
+        logger.debug("Reverse lookup failed ip=%s", ip)
         return None
 
 
@@ -72,7 +69,8 @@ async def discover_subdomains_async(
                 for r in ans:
                     return str(r)
                 return None
-            except Exception:
+            except Exception as e:
+                logger.debug("Async DNS resolver failed fqdn=%s error=%s; falling back", fqdn, e)
                 return await asyncio.to_thread(resolve_host, fqdn)
 
     tasks: List[asyncio.Task[tuple[str, Optional[str]]]] = []
@@ -98,7 +96,7 @@ async def discover_subdomains_async(
     return found
 
 
-def try_zone_transfer(domain: str) -> Dict[str, Any]:
+def try_zone_transfer(domain: str) -> ZoneTransferResult:
     """Report-only zone transfer attempt.
 
     Uses dnspython if installed; otherwise returns a message.
@@ -113,8 +111,9 @@ def try_zone_transfer(domain: str) -> Dict[str, Any]:
         try:
             ans = dns.resolver.resolve(domain, "NS")
             ns = [str(r).rstrip(".") for r in ans]
-        except Exception:
-            return {"ok": False, "reason": "Could not resolve NS records"}
+        except Exception as e:
+            logger.debug("Could not resolve NS records domain=%s error=%s", domain, e)
+            return ZoneTransferResult(ok=False, reason="Could not resolve NS records")
 
         results = {}
         for server in ns[:5]:
@@ -122,34 +121,43 @@ def try_zone_transfer(domain: str) -> Dict[str, Any]:
                 z = dns.zone.from_xfr(dns.query.xfr(server, domain, timeout=3.0))
                 results[server] = {"ok": True, "records": len(list(z.nodes.keys()))}
             except Exception as e:
+                logger.debug("Zone transfer failed domain=%s ns=%s error=%s", domain, server, e)
                 results[server] = {"ok": False, "error": str(e)}
 
-        return {"ok": any(v.get("ok") for v in results.values()), "nameservers": ns, "results": results}
-    except Exception:
-        return {"ok": False, "reason": "dnspython not installed (install extras: pip install hwatlib[dns])"}
+        return ZoneTransferResult(
+            ok=any(v.get("ok") for v in results.values()),
+            nameservers=ns,
+            results=results,
+        )
+    except Exception as e:
+        logger.debug("dnspython unavailable or zone transfer init failed domain=%s error=%s", domain, e)
+        return ZoneTransferResult(
+            ok=False,
+            reason="dnspython not installed (install extras: pip install hwatlib[dns])",
+        )
 
 
-async def try_zone_transfer_async(domain: str) -> Dict[str, Any]:
+async def try_zone_transfer_async(domain: str) -> ZoneTransferResult:
     return await asyncio.to_thread(try_zone_transfer, domain)
 
 
 def try_zone_transfer_typed(domain: str) -> ZoneTransferResult:
-    zt = try_zone_transfer(domain)
-    return ZoneTransferResult(
-        ok=bool(zt.get("ok")),
-        nameservers=list(zt.get("nameservers") or []),
-        results=dict(zt.get("results") or {}),
-        reason=str(zt.get("reason")) if zt.get("reason") else None,
-    )
+    return try_zone_transfer(domain)
 
 
-def enumerate_dns(domain: str, *, wordlist_path: Optional[str] = None, ips_for_reverse: Optional[List[str]] = None) -> DnsResult:
+def enumerate_dns(
+    domain: str,
+    *,
+    wordlist_path: Optional[str] = None,
+    ips_for_reverse: Optional[List[str]] = None,
+) -> DnsResultTyped:
     words: List[str] = []
     if wordlist_path:
         try:
             with open(wordlist_path, "r", encoding="utf-8", errors="ignore") as f:
                 words = [line.strip() for line in f if line.strip()]
-        except Exception:
+        except OSError as e:
+            logger.warning("Could not read DNS wordlist path=%s error=%s", wordlist_path, e)
             words = []
 
     subdomains = discover_subdomains(domain, words) if words else {}
@@ -162,7 +170,12 @@ def enumerate_dns(domain: str, *, wordlist_path: Optional[str] = None, ips_for_r
 
     zt = try_zone_transfer(domain)
 
-    return DnsResult(subdomains=subdomains, reverse=reverse, zone_transfer=zt)
+    return DnsResultTyped(
+        ok=True,
+        subdomains=subdomains,
+        reverse=reverse,
+        zone_transfer=zt,
+    )
 
 
 def enumerate_dns_typed(
@@ -171,18 +184,7 @@ def enumerate_dns_typed(
     wordlist_path: Optional[str] = None,
     ips_for_reverse: Optional[List[str]] = None,
 ) -> DnsResultTyped:
-    r = enumerate_dns(domain, wordlist_path=wordlist_path, ips_for_reverse=ips_for_reverse)
-    zt = r.zone_transfer if isinstance(r.zone_transfer, dict) else {}
-    return DnsResultTyped(
-        subdomains=dict(r.subdomains),
-        reverse=dict(r.reverse),
-        zone_transfer=ZoneTransferResult(
-            ok=bool(zt.get("ok")),
-            nameservers=list(zt.get("nameservers") or []),
-            results=dict(zt.get("results") or {}),
-            reason=str(zt.get("reason")) if zt.get("reason") else None,
-        ),
-    )
+    return enumerate_dns(domain, wordlist_path=wordlist_path, ips_for_reverse=ips_for_reverse)
 
 
 async def enumerate_dns_async_typed(
@@ -205,15 +207,9 @@ async def enumerate_dns_async_typed(
             if name:
                 reverse[ip] = name
 
-    zt = await try_zone_transfer_async(domain)
-    zone_typed = ZoneTransferResult(
-        ok=bool(zt.get("ok")),
-        nameservers=list(zt.get("nameservers") or []),
-        results=dict(zt.get("results") or {}),
-        reason=str(zt.get("reason")) if zt.get("reason") else None,
-    )
+    zone_typed = await try_zone_transfer_async(domain)
 
-    return DnsResultTyped(subdomains=subdomains, reverse=reverse, zone_transfer=zone_typed)
+    return DnsResultTyped(ok=True, subdomains=subdomains, reverse=reverse, zone_transfer=zone_typed)
 
 
 async def _read_wordlist_async(path: str) -> List[str]:
@@ -221,7 +217,8 @@ async def _read_wordlist_async(path: str) -> List[str]:
         try:
             with open(path, "r", encoding="utf-8", errors="ignore") as f:
                 return [line.strip() for line in f if line.strip()]
-        except Exception:
+        except OSError as e:
+            logger.warning("Could not read DNS wordlist path=%s error=%s", path, e)
             return []
 
     return await asyncio.to_thread(read_sync)

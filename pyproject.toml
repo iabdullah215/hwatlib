@@ -2,6 +2,86 @@
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "hwatlib"
+version = "0.2.0"
+description = "A practical penetration testing wrapper library for recon, web, exploitation, and post-exploitation."
+readme = "README.md"
+requires-python = ">=3.7"
+license = { text = "MIT" }
+authors = [
+	{ name = "HwatSauce", email = "muhammadabdullah8040@gmail.com" },
+]
+classifiers = [
+	"Programming Language :: Python :: 3",
+	"License :: OSI Approved :: MIT License",
+	"Operating System :: OS Independent",
+	"Topic :: Security",
+	"Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+	"requests>=2.31,<3",
+	"beautifulsoup4>=4.12,<5",
+	"paramiko>=3.4,<4",
+	"python-nmap>=0.7.1,<0.8",
+]
+
+[project.optional-dependencies]
+dev = [
+	"pytest>=8,<9",
+	"pytest-cov>=5,<6",
+	"ruff>=0.6,<1",
+	"mypy>=1.11,<2",
+	"types-requests>=2.32,<3",
+]
+async = ["aiohttp>=3.9,<4"]
+dns = ["dnspython>=2.6,<3"]
+
+[project.scripts]
+hwat = "hwatlib.cli:main"
+hwat-recon = "hwatlib.recon:main"
+hwat-web = "hwatlib.web:main"
+hwat-exploit = "hwatlib.exploit:main"
+hwat-post = "hwatlib.privesc:main"
+
+[project.urls]
+Homepage = "https://github.com/iabdullah215/hwatlib"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["hwatlib*"]
+exclude = ["tests*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+target-version = "py39"
+line-length = 100
+src = ["hwatlib", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["hwatlib"]
+
+[tool.mypy]
+python_version = "3.9"
+files = ["hwatlib"]
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+no_implicit_optional = true
+check_untyped_defs = true
+ignore_missing_imports = true
+
+[tool.coverage.run]
+branch = true
+source = ["hwatlib"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 45

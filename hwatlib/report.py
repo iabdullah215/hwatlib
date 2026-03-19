@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import json
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+
+from .models import to_dict as _to_dict
 
 
 @dataclass
@@ -17,18 +19,29 @@ class HwatReport:
     plugins: Any = field(default_factory=dict)
 
     def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
+        return {
+            "metadata": _to_dict(self.metadata),
+            "recon": _to_dict(self.recon),
+            "dns": _to_dict(self.dns),
+            "web": _to_dict(self.web),
+            "privesc": _to_dict(self.privesc),
+            "secrets": _to_dict(self.secrets),
+            "plugins": _to_dict(self.plugins),
+        }
 
     def to_json(self, *, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, default=str)
 
     def to_markdown(self) -> str:
-        def section(title: str, obj: Dict[str, Any]) -> str:
+        def section(title: str, obj: Any) -> str:
+            obj_dict = _to_dict(obj)
+            if not isinstance(obj_dict, dict):
+                obj_dict = {"value": obj_dict}
             lines = [f"## {title}"]
-            if not obj:
+            if not obj_dict:
                 lines.append("- (none)")
                 return "\n".join(lines)
-            for k, v in obj.items():
+            for k, v in obj_dict.items():
                 if isinstance(v, (dict, list)):
                     lines.append(f"- **{k}**:")
                     lines.append("```json")
