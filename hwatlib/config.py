@@ -25,11 +25,13 @@ def _load_toml_document(content: str) -> Dict[str, Any]:
     """
 
     try:
-        import tomllib as toml_mod  # py3.11+
-    except ModuleNotFoundError:
-        import tomli as toml_mod  # type: ignore[import-not-found]
+        import tomllib  # py3.11+
 
-    return toml_mod.loads(content)
+        return tomllib.loads(content)
+    except ModuleNotFoundError:
+        import tomli  # type: ignore[import-not-found]
+
+        return tomli.loads(content)
 
 
 @dataclass
