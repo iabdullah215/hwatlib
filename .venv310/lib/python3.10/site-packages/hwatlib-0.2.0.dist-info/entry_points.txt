@@ -1,0 +1,6 @@
+[console_scripts]
+hwat = hwatlib.cli:main
+hwat-exploit = hwatlib.exploit:main
+hwat-post = hwatlib.privesc:main
+hwat-recon = hwatlib.recon:main
+hwat-web = hwatlib.web:main

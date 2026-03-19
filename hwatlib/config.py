@@ -18,6 +18,20 @@ _MAX_RETRIES = 20
 _MAX_BACKOFF = 60.0
 
 
+def _load_toml_document(content: str) -> Dict[str, Any]:
+    """Load TOML across Python versions.
+
+    Uses stdlib tomllib on 3.11+ and falls back to tomli on 3.9/3.10.
+    """
+
+    try:
+        import tomllib as toml_mod  # py3.11+
+    except ModuleNotFoundError:
+        import tomli as toml_mod  # type: ignore[import-not-found]
+
+    return toml_mod.loads(content)
+
+
 @dataclass
 class HwatConfig:
     http: HttpOptions = field(default_factory=HttpOptions)
@@ -62,10 +76,8 @@ def load_config(
     data: Dict[str, Any] = {}
     if toml_path.exists():
         try:
-            import tomllib  # py3.11+
-
-            data = tomllib.loads(toml_path.read_text(encoding="utf-8"))
-        except (OSError, ValueError) as e:
+            data = _load_toml_document(toml_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, ModuleNotFoundError) as e:
             msg = f"Failed to parse config file path={toml_path} error={e}"
             _config_issue(msg, strict=strict_mode)
             data = {}
