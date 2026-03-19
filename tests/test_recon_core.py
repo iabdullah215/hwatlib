@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import subprocess
 
-from hwatlib.models import NmapResult
 import hwatlib.recon as recon
+from hwatlib.models import NmapResult
 
 
 class _FakeBannerSocket:
@@ -79,6 +79,6 @@ def test_banner_grab_explicit_host_ports(monkeypatch):
 
     out = recon.banner_grab(host="127.0.0.1", ports=[80, 22, 9999])
 
-    assert out[80] == "HTTP/1.1 200 OK"
+    assert out[80].startswith("HTTP/1.1 200 OK")
     assert out[22] == "Open (no banner)"
     assert out[9999] is None

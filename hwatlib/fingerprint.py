@@ -5,7 +5,6 @@ import socket
 import ssl
 from typing import Any, Dict, Optional
 
-
 HTTP_PORTS = {80, 8080, 8000, 8008, 8888}
 HTTPS_PORTS = {443, 8443}
 

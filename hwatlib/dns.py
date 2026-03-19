@@ -2,22 +2,15 @@ from __future__ import annotations
 
 import asyncio
 import socket
-from typing import Any, Dict, Iterable, List, Optional
-
-from typing import TYPE_CHECKING
-
-from .utils import resolve_host
-from .utils import setup_logger
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 from .models import DnsResultTyped, ZoneTransferResult
-
+from .utils import resolve_host, setup_logger
 
 logger = setup_logger()
 
 if TYPE_CHECKING:  # pragma: no cover
-    import dns.query  # type: ignore
-    import dns.resolver  # type: ignore
-    import dns.zone  # type: ignore
+    pass  # type: ignore
 
 
 def reverse_lookup(ip: str) -> Optional[str]:
@@ -103,8 +96,8 @@ def try_zone_transfer(domain: str) -> ZoneTransferResult:
     """
 
     try:
-        import dns.resolver  # type: ignore
         import dns.query  # type: ignore
+        import dns.resolver  # type: ignore
         import dns.zone  # type: ignore
 
         ns = []

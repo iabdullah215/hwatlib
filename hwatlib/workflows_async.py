@@ -3,21 +3,18 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, Iterable, List, Optional
 
+from . import dns as dns_mod
+from . import plugins as plugins_mod
+from . import recon as recon_mod
+from . import web as web_mod
+from . import workflows as sync_workflows
 from .async_http import AsyncHttpClient
+from .findings import score_report
 from .http import HttpOptions
+from .models import DnsResultTyped, NmapResult, ReconResult, WebResult
 from .report import HwatReport, new_report
 from .session import HwatSession, new_session
-from . import dns as dns_mod
-from . import fingerprint as fp
-from . import plugins as plugins_mod
-from . import privesc as privesc_mod
-from . import recon as recon_mod
-from . import secrets as secrets_mod
-from . import web as web_mod
-from .models import DnsResultTyped, NmapResult, PrivescResult, ReconResult, WebResult
-from . import workflows as sync_workflows
 from .utils import setup_logger
-
 
 logger = setup_logger()
 
@@ -145,7 +142,14 @@ def _add_secrets(report: HwatReport, *, secrets_paths: Optional[List[str]]) -> N
 
 
 def _add_plugins(report: HwatReport, session: HwatSession, *, plugins: Optional[Iterable[str]]) -> None:
-    sync_workflows._add_plugins(report, session, plugins=plugins)
+    if not plugins:
+        return
+    try:
+        results = plugins_mod.run_checks(session, names=plugins)
+        report.plugins = sync_workflows._serialize_plugin_results(results)
+    except Exception as e:
+        logger.exception("Async plugins phase failed plugins=%s: %s", list(plugins), e)
+        report.plugins = {"ok": False, "error": str(e)}
 
 
 def _add_fingerprint(report: HwatReport, ip: Optional[str]) -> None:
@@ -153,7 +157,9 @@ def _add_fingerprint(report: HwatReport, ip: Optional[str]) -> None:
 
 
 def _add_risk(report: HwatReport) -> None:
-    sync_workflows._add_risk(report)
+    risk = score_report(report)
+    report.metadata["risk"] = {"score": risk.score, "level": risk.level}
+    report.metadata["findings"] = _merge_findings([f.to_dict() for f in risk.findings], report.plugins)
 
 
 def _merge_findings(risk_findings: List[Dict[str, Any]], plugins_section: Any) -> List[Dict[str, Any]]:

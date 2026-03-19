@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
-from .session import HwatSession
 from .findings import Finding
-
+from .session import HwatSession
 
 CheckFn = Callable[[HwatSession], Any]
 

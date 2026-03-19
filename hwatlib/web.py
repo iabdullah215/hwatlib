@@ -4,16 +4,15 @@ import csv
 import json
 import re
 import urllib.parse
-from typing import Any, Dict, List, Optional
-
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+from xml.etree import ElementTree as ET
 
 import requests
 from bs4 import BeautifulSoup
-from xml.etree import ElementTree as ET
 
-from .http import HttpClient
 from .async_http import AsyncHttpClient
+from .http import HttpClient
 from .models import (
     CrawlResult,
     SitemapDiscovery,
@@ -24,7 +23,6 @@ from .models import (
     WebResult,
 )
 from .utils import setup_logger
-
 
 HTML_PARSER = "html.parser"
 

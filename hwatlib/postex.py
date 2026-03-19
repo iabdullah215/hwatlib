@@ -10,7 +10,6 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
-
 _CRON_SCHEDULE_RE = re.compile(r"^[\d\*/,\-]+(\s+[\d\*/,\-]+){4}$")
 _ALLOWED_STATE_CHANGE_BINARIES = {
     "bash",

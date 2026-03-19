@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 from . import postex
 from .models import PrivescScore
 
-
 CONFIRM_HELP = "Actually perform the change"
 
 

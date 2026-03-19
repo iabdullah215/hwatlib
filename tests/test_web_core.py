@@ -52,7 +52,7 @@ def test_fetch_all_parses_forms_and_js(monkeypatch):
 
 def test_crawl_collect_tolerates_fetch_errors():
     pages = {
-        "http://example.test": '<a href="/ok">ok</a><a href="/err">err</a>',
+        "http://example.test/": '<a href="/ok">ok</a><a href="/err">err</a>',
         "http://example.test/ok": '<a href="/ok">self</a>',
     }
 
@@ -81,7 +81,7 @@ def test_fetch_all_async_matches_sync_shape(monkeypatch):
 
 def test_crawl_collect_async_tolerates_fetch_errors():
     pages = {
-        "http://example.test": '<a href="/ok">ok</a><a href="/bad">bad</a>',
+        "http://example.test/": '<a href="/ok">ok</a><a href="/bad">bad</a>',
         "http://example.test/ok": "<html></html>",
     }
 

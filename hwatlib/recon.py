@@ -1,15 +1,14 @@
 import argparse
 import asyncio
 import re
-import socket
 import shlex
+import socket
 import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
-from .utils import resolve_host, setup_logger
 from .models import NmapResult
-
+from .utils import resolve_host, setup_logger
 
 logger = setup_logger()
 

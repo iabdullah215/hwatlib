@@ -3,10 +3,9 @@ from __future__ import annotations
 import os
 import re
 from dataclasses import dataclass
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, Iterable, List, Tuple
 
 from .models import SecretsSummary
-
 
 DEFAULT_EXTS = {".env", ".ini", ".conf", ".yaml", ".yml", ".json", ".txt"}
 DEFAULT_NAMES = {".env", "config", "settings", "secrets", "credentials"}

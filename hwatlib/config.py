@@ -9,7 +9,6 @@ from typing import Any, Dict, Optional
 from .http import HttpOptions
 from .utils import setup_logger
 
-
 logger = setup_logger()
 
 _MAX_TIMEOUT = 300.0
@@ -206,9 +205,9 @@ def _load_json_dict(value: str, *, strict: bool) -> Optional[Dict[str, str]]:
         obj = json.loads(value)
         if isinstance(obj, dict):
             return {str(k): str(v) for k, v in obj.items()}
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as err:
         if strict:
-            raise ValueError("Invalid JSON object")
+            raise ValueError("Invalid JSON object") from err
         return None
     if strict:
         raise ValueError("JSON value is not an object")

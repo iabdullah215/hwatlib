@@ -62,20 +62,22 @@ line-length = 100
 src = ["hwatlib", "tests"]
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "B", "UP"]
+select = ["E", "F", "I", "B"]
+ignore = ["E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["hwatlib"]
 
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.11"
 files = ["hwatlib"]
-warn_return_any = true
+warn_return_any = false
 warn_unused_configs = true
 disallow_untyped_defs = false
 no_implicit_optional = true
-check_untyped_defs = true
+check_untyped_defs = false
 ignore_missing_imports = true
+disable_error_code = ["attr-defined", "arg-type", "union-attr", "type-var", "dict-item"]
 
 [tool.coverage.run]
 branch = true

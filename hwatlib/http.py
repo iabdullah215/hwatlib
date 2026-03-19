@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional, Tuple, Union
+from typing import Dict, Optional, Tuple
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -86,6 +86,7 @@ class HttpClient:
         if verify is False and self.options.suppress_insecure_warning:
             try:
                 import warnings
+
                 import urllib3
 
                 warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
