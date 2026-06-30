@@ -3,14 +3,13 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
-
 # -----------------
 # Common helpers
 # -----------------
 
 
 def to_dict(obj: Any) -> Any:
-    if hasattr(obj, "to_dict") and callable(getattr(obj, "to_dict")):
+    if hasattr(obj, "to_dict") and callable(obj.to_dict):
         return obj.to_dict()
     if hasattr(obj, "__dataclass_fields__"):
         return asdict(obj)

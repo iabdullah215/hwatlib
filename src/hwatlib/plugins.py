@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
-from .session import HwatSession
 from .findings import Finding
-
+from .session import HwatSession
 
 CheckFn = Callable[[HwatSession], Any]
 
@@ -181,7 +180,11 @@ def _normalize_findings(out: Any) -> List[Finding]:
 
 
 def _looks_like_finding(obj: Dict[str, Any]) -> bool:
-    return isinstance(obj.get("category"), str) and isinstance(obj.get("title"), str) and isinstance(obj.get("severity"), str)
+    return (
+        isinstance(obj.get("category"), str)
+        and isinstance(obj.get("title"), str)
+        and isinstance(obj.get("severity"), str)
+    )
 
 
 def _dict_to_finding(obj: Dict[str, Any]) -> Finding:

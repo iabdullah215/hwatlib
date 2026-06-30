@@ -8,6 +8,8 @@ __pycache__/
 hwat-venv/
 .venv/
 venv/
+env/
+.env
 
 # Build artifacts
 build/
@@ -18,8 +20,16 @@ dist/
 # Test / coverage
 .pytest_cache/
 .coverage
+.coverage.*
+coverage.xml
 htmlcov/
+
+# Type / lint caches
+.mypy_cache/
+.ruff_cache/
+.dmypy.json
 
 # Editor
 .vscode/
+.idea/
 .DS_Store

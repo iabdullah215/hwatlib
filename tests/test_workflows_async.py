@@ -21,7 +21,9 @@ def test_build_report_async_web_and_risk(monkeypatch):
         def ensure_base_url(self):
             return self._base_url
 
-    monkeypatch.setattr(wf, "new_session", lambda target, base_url=None, http_options=None: DummySession(target, base_url))
+    monkeypatch.setattr(
+        wf, "new_session", lambda target, base_url=None, http_options=None: DummySession(target, base_url)
+    )
 
     async def fake_scan_async(base_url: str, *, client, depth: int = 2):
         assert depth == 2

@@ -3,9 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
-from .report import HwatReport
 from .models import to_dict as _to_dict
-
+from .report import HwatReport
 
 Severity = str  # "info" | "low" | "medium" | "high" | "critical"
 

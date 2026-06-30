@@ -2,6 +2,122 @@
 requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
+[project]
+name = "hwatlib"
+version = "0.2.0"
+description = "A practical penetration testing wrapper library for recon, web, exploitation, and post-exploitation."
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [{ name = "HwatSauce", email = "muhammadabdullah8040@gmail.com" }]
+keywords = ["pentesting", "security", "recon", "exploitation", "ctf", "infosec"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Information Technology",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Topic :: Security",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dependencies = [
+    "requests>=2.28",
+    "beautifulsoup4>=4.11",
+    "paramiko>=3.0",
+    "python-nmap>=0.7",
+]
+
+[project.optional-dependencies]
+async = ["aiohttp>=3.8"]
+dns = ["dnspython>=2.3"]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "ruff>=0.5",
+    "mypy>=1.8",
+    "pre-commit>=3.5",
+    "responses>=0.24",
+    "build>=1.0",
+    "twine>=5.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/iabdullah215/hwatlib"
+Repository = "https://github.com/iabdullah215/hwatlib"
+Issues = "https://github.com/iabdullah215/hwatlib/issues"
+Changelog = "https://github.com/iabdullah215/hwatlib/blob/main/CHANGELOG.md"
+
+[project.scripts]
+hwat = "hwatlib.cli:main"
+hwat-recon = "hwatlib.recon:main"
+hwat-web = "hwatlib.web:main"
+hwat-exploit = "hwatlib.exploit:main"
+hwat-post = "hwatlib.privesc:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+hwatlib = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.coverage.run]
+branch = true
+source = ["hwatlib"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.ruff]
+target-version = "py38"
+line-length = 120
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+# Note: `UP` (pyupgrade) is intentionally omitted. The package targets Python
+# 3.8 and several modules use runtime-evaluated `typing.Dict`/`List`
+# annotations; modernizing those to PEP 585 builtins is a separate, deliberate
+# change rather than part of this baseline.
+select = ["E", "F", "W", "I", "B", "C4"]
+# Security tooling deliberately shells out / makes risky requests; keep the
+# rule set focused on correctness and style rather than flagging by design.
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["B"]
+
+[tool.mypy]
+# Analysis target: mypy no longer supports checking against 3.8 (EOL). Runtime
+# support for 3.8+ is enforced by the CI test matrix, which runs the suite on
+# every supported interpreter.
+python_version = "3.10"
+files = ["src/hwatlib"]
+ignore_missing_imports = true
+# Kept false for cross-environment stability: some third-party libraries ship
+# stubs in newer versions, which would otherwise flip `type: ignore` comments
+# between "needed" and "unused" depending on the installed version.
+warn_unused_ignores = false
+no_implicit_optional = true
+
+# Incremental adoption: the core package is type-checked, while these modules
+# still carry type debt (largely third-party stub unions, e.g. BeautifulSoup).
+# The goal is to reduce this list over time, not grow it.
+[[tool.mypy.overrides]]
+module = [
+    "hwatlib.web",
+    "hwatlib.dns",
+    "hwatlib.diff",
+    "hwatlib.recon",
+    "hwatlib.workflows",
+    "hwatlib.cli",
+]
+ignore_errors = true

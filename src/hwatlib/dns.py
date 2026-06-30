@@ -3,18 +3,13 @@ from __future__ import annotations
 import asyncio
 import socket
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Optional
-
-from typing import TYPE_CHECKING
-
-from .utils import resolve_host
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from .models import DnsResultTyped, ZoneTransferResult
+from .utils import resolve_host
 
 if TYPE_CHECKING:  # pragma: no cover
-    import dns.query  # type: ignore
-    import dns.resolver  # type: ignore
-    import dns.zone  # type: ignore
+    pass  # type: ignore
 
 
 @dataclass
@@ -105,8 +100,8 @@ def try_zone_transfer(domain: str) -> Dict[str, Any]:
     """
 
     try:
-        import dns.resolver  # type: ignore
         import dns.query  # type: ignore
+        import dns.resolver  # type: ignore
         import dns.zone  # type: ignore
 
         ns = []
@@ -143,7 +138,9 @@ def try_zone_transfer_typed(domain: str) -> ZoneTransferResult:
     )
 
 
-def enumerate_dns(domain: str, *, wordlist_path: Optional[str] = None, ips_for_reverse: Optional[List[str]] = None) -> DnsResult:
+def enumerate_dns(
+    domain: str, *, wordlist_path: Optional[str] = None, ips_for_reverse: Optional[List[str]] = None
+) -> DnsResult:
     words: List[str] = []
     if wordlist_path:
         try:

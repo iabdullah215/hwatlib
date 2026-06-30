@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
-import requests
-
 from .http import HttpClient, HttpOptions
 from .utils import resolve_host, setup_logger
 

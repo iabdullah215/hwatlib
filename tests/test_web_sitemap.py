@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from hwatlib.web import canonicalize_url, _parse_robots_sitemaps, _parse_sitemap_xml_locs
+from hwatlib.web import _parse_robots_sitemaps, _parse_sitemap_xml_locs, canonicalize_url
 
 
 def test_canonicalize_url_drops_fragment_and_sorts_query():

@@ -173,6 +173,6 @@ async def _backoff_sleep(attempt: int, backoff_factor: float) -> None:
     if backoff_factor <= 0:
         await asyncio.sleep(0)
         return
-    delay = backoff_factor * (2 ** attempt)
+    delay = backoff_factor * (2**attempt)
     # keep it bounded; we don't expose a separate max delay yet
     await asyncio.sleep(min(delay, 10.0))

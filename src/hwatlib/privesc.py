@@ -4,7 +4,6 @@ from typing import Any, Dict, List, Optional
 from . import postex
 from .models import PrivescScore
 
-
 CONFIRM_HELP = "Actually perform the change"
 
 
@@ -139,12 +138,16 @@ def _dispatch_cli(cmd: str, args, parser: argparse.ArgumentParser) -> int:
         return 0
 
     mutators = {
-        "add-cronjob": lambda: postex.add_cronjob_confirmed(args.command, schedule=args.schedule, confirm=bool(args.confirm)),
+        "add-cronjob": lambda: postex.add_cronjob_confirmed(
+            args.command, schedule=args.schedule, confirm=bool(args.confirm)
+        ),
         "backdoor-ssh": lambda: postex.backdoor_ssh_confirmed(args.pubkey, confirm=bool(args.confirm)),
         "add-schtask": lambda: postex.add_schtask_confirmed(
             args.command, name=args.name, schedule=args.schedule, confirm=bool(args.confirm)
         ),
-        "extract-hashes-windows": lambda: postex.extract_hashes_windows_confirmed(save_dir=args.save_dir, confirm=bool(args.confirm)),
+        "extract-hashes-windows": lambda: postex.extract_hashes_windows_confirmed(
+            save_dir=args.save_dir, confirm=bool(args.confirm)
+        ),
     }
 
     if cmd in mutators:

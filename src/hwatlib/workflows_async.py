@@ -3,11 +3,6 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Dict, Iterable, List, Optional
 
-from .async_http import AsyncHttpClient
-from .findings import score_report
-from .http import HttpOptions
-from .report import HwatReport, new_report
-from .session import HwatSession, new_session
 from . import dns as dns_mod
 from . import fingerprint as fp
 from . import plugins as plugins_mod
@@ -15,7 +10,12 @@ from . import privesc as privesc_mod
 from . import recon as recon_mod
 from . import secrets as secrets_mod
 from . import web as web_mod
+from .async_http import AsyncHttpClient
+from .findings import score_report
+from .http import HttpOptions
 from .models import NmapResult, PrivescResult, ReconResult
+from .report import HwatReport, new_report
+from .session import HwatSession, new_session
 
 
 async def build_report_async(

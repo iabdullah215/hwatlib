@@ -9,9 +9,9 @@ from . import privesc as privesc_mod
 from . import recon as recon_mod
 from . import secrets as secrets_mod
 from . import web as web_mod
-from .http import HttpOptions
 from .findings import score_report
-from .models import DnsResultTyped, NmapResult, PrivescResult, ReconResult
+from .http import HttpOptions
+from .models import NmapResult, PrivescResult, ReconResult
 from .report import HwatReport, new_report
 from .session import HwatSession, new_session
 

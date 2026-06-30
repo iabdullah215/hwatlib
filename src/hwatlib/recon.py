@@ -6,9 +6,8 @@ import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
-from .utils import resolve_host, setup_logger
 from .models import NmapResult
-
+from .utils import resolve_host, setup_logger
 
 logger = setup_logger()
 
@@ -31,7 +30,9 @@ def _is_ipv4(value: str) -> bool:
     return bool(re.fullmatch(r"\d+\.\d+\.\d+\.\d+", value or ""))
 
 
-def resolve_target(target: str, ip: Optional[str] = None, *, add_to_hosts: bool = False, hosts_path: str = "/etc/hosts") -> Optional[str]:
+def resolve_target(
+    target: str, ip: Optional[str] = None, *, add_to_hosts: bool = False, hosts_path: str = "/etc/hosts"
+) -> Optional[str]:
     """Resolve a domain/IP; optionally add domain->IP to /etc/hosts.
 
     Notes:
@@ -70,7 +71,9 @@ def run_nmap(target: str, options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False
 
         open_udp: List[int] = []
         if udp:
-            udp_output = subprocess.check_output(["nmap", "-sU", target], stderr=subprocess.STDOUT).decode(errors="ignore")
+            udp_output = subprocess.check_output(["nmap", "-sU", target], stderr=subprocess.STDOUT).decode(
+                errors="ignore"
+            )
             output += "\n\n" + udp_output
             for line in udp_output.splitlines():
                 if re.match(r"^\d+/udp\s+open", line):
@@ -106,6 +109,7 @@ def _banner_grab_ports(host: str, ports: List[int]) -> Dict[int, Optional[str]]:
 # ----------------
 # README-compatible convenience API
 # ----------------
+
 
 def init(target: str, *, add_to_hosts: bool = False, ip: Optional[str] = None) -> Optional[str]:
     """Initialize a global recon session (README: recon.init(...))."""
@@ -143,7 +147,9 @@ def nmap_scan(options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False, *, target:
     return output
 
 
-def nmap_scan_typed(options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False, *, target: Optional[str] = None) -> NmapResult:
+def nmap_scan_typed(
+    options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False, *, target: Optional[str] = None
+) -> NmapResult:
     global _session
 
     if target is None:

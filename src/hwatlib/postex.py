@@ -5,7 +5,7 @@ import os
 import platform
 import socket
 import subprocess
-from typing import Optional, List
+from typing import List, Optional
 
 
 def run_cmd(cmd):
@@ -142,7 +142,7 @@ def search_ssh_keys_windows():
 
 def search_config_files():
     if is_windows():
-        return run_cmd('dir /s /b %USERPROFILE%\\*.config 2>nul || dir /s /b %USERPROFILE%\\*.xml 2>nul')
+        return run_cmd("dir /s /b %USERPROFILE%\\*.config 2>nul || dir /s /b %USERPROFILE%\\*.xml 2>nul")
     return run_cmd("find / -name '*.conf' -o -name '*.ini' -o -name '*.yaml' 2>/dev/null")
 
 
@@ -273,7 +273,9 @@ def list_scheduled_tasks():
 def enum_installed_programs_windows():
     if not is_windows():
         return "Windows-only"
-    return run_cmd('wmic product get name,version 2>nul || powershell "Get-WmiObject -Class Win32_Product | Select-Object Name,Version"')
+    return run_cmd(
+        'wmic product get name,version 2>nul || powershell "Get-WmiObject -Class Win32_Product | Select-Object Name,Version"'
+    )
 
 
 def enum_weak_services_windows():

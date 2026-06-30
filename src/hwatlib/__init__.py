@@ -9,7 +9,26 @@ Recommended imports:
 This package intentionally exposes a small, stable surface (submodules).
 """
 
-from . import async_http, cli, config, dns, exploit, findings, fingerprint, http, plugins, postex, privesc, recon, report, secrets, session, web, workflows, workflows_async
+from . import (
+    async_http,
+    cli,
+    config,
+    dns,
+    exploit,
+    findings,
+    fingerprint,
+    http,
+    plugins,
+    postex,
+    privesc,
+    recon,
+    report,
+    secrets,
+    session,
+    web,
+    workflows,
+    workflows_async,
+)
 from .utils import setup_logger as _setup_logger
 
 _setup_logger()

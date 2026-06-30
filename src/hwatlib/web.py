@@ -4,15 +4,14 @@ import csv
 import json
 import re
 import urllib.parse
-from typing import Any, Dict, List, Optional
-
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 import requests
 from bs4 import BeautifulSoup
 
-from .http import HttpClient
 from .async_http import AsyncHttpClient
+from .http import HttpClient
 from .models import (
     CrawlResult,
     SitemapDiscovery,
@@ -23,7 +22,6 @@ from .models import (
     WebResult,
 )
 from .utils import setup_logger
-
 
 HTML_PARSER = "html.parser"
 
@@ -97,7 +95,9 @@ class WebScanner:
                     pass
 
     # ---------------- PARAMETER DISCOVERY ----------------
-    def param_discovery(self, params=["id", "page", "q", "file"]):
+    def param_discovery(self, params=None):
+        if params is None:
+            params = ["id", "page", "q", "file"]
         logger.info("Parameter discovery on %s", self.target)
         for p in params:
             url = f"{self.target}?{p}=test"
@@ -169,6 +169,7 @@ class WebScanner:
 # ----------------
 # README-compatible functional API
 # ----------------
+
 
 def fetch_headers(url: str, *, timeout: int = 5, session: Optional[requests.Session] = None) -> Dict[str, str]:
     """Fetch and return response headers (README: web.fetch_headers())."""

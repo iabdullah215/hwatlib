@@ -5,7 +5,7 @@ import socket
 import subprocess
 import warnings
 from datetime import datetime
-from typing import Optional, Sequence, Union
+from typing import Optional, Sequence
 
 import requests
 import urllib3
@@ -119,7 +119,9 @@ def check_sudo() -> bool:
         return False
 
 
-def fetch_url(url: str, timeout: int = 5, *, verify: bool = True, suppress_insecure_warning: bool = False) -> Optional[str]:
+def fetch_url(
+    url: str, timeout: int = 5, *, verify: bool = True, suppress_insecure_warning: bool = False
+) -> Optional[str]:
     """Fetch contents of a URL.
 
     Safer default: TLS verification is enabled by default.
