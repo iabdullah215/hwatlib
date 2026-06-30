@@ -53,6 +53,9 @@ where = ["."]
 include = ["hwatlib*"]
 exclude = ["tests*"]
 
+[tool.setuptools.package-data]
+hwatlib = ["py.typed"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
