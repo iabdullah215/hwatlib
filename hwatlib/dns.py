@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import socket
-from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
 from .models import DnsResultTyped, ZoneTransferResult
-from .utils import resolve_host, setup_logger
+from .utils import get_logger, resolve_host
 
-logger = setup_logger()
+logger = get_logger()
 
 if TYPE_CHECKING:  # pragma: no cover
     pass  # type: ignore
@@ -108,7 +108,7 @@ def try_zone_transfer(domain: str) -> ZoneTransferResult:
             logger.debug("Could not resolve NS records domain=%s error=%s", domain, e)
             return ZoneTransferResult(ok=False, reason="Could not resolve NS records")
 
-        results = {}
+        results: Dict[str, Dict[str, Any]] = {}
         for server in ns[:5]:
             try:
                 z = dns.zone.from_xfr(dns.query.xfr(server, domain, timeout=3.0))

@@ -10,6 +10,8 @@ import subprocess
 from pathlib import Path
 from typing import List, Optional, Sequence, Tuple, Union
 
+from .utils import authorized_use_banner
+
 _CRON_SCHEDULE_RE = re.compile(r"^[\d\*/,\-]+(\s+[\d\*/,\-]+){4}$")
 _ALLOWED_STATE_CHANGE_BINARIES = {
     "bash",
@@ -480,7 +482,8 @@ def pretty_report(report):
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="hwat-post", description="hwatlib post-exploitation helpers")
+    authorized_use_banner()
+    parser = argparse.ArgumentParser(prog="hwat-postex", description="hwatlib post-exploitation helpers")
     parser.parse_args(argv)
 
     print(pretty_report(full_recon()))

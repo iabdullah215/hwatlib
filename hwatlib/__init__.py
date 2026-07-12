@@ -9,6 +9,8 @@ Recommended imports:
 This package intentionally exposes a small, stable surface (submodules).
 """
 
+import logging
+
 from . import (
     async_http,
     cli,
@@ -29,9 +31,11 @@ from . import (
     workflows,
     workflows_async,
 )
-from .utils import setup_logger as _setup_logger
 
-_setup_logger()
+# Follow the stdlib recommendation for libraries: attach a NullHandler so that
+# importing hwatlib never configures handlers or emits output on its own. The
+# host application (or the bundled CLIs via setup_logger()) decides on output.
+logging.getLogger("hwatlib").addHandler(logging.NullHandler())
 
 __all__ = [
     "recon",

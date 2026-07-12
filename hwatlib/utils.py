@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import logging
+import os
 import re
 import shlex
 import socket
 import subprocess
+import sys
 import warnings
 from datetime import datetime
 from typing import Optional, Sequence
@@ -13,9 +15,48 @@ import requests
 import urllib3
 
 
+def get_logger(name: str = "hwatlib") -> logging.Logger:
+    """Return a library logger without configuring handlers or output.
+
+    Library code should use this so that merely importing hwatlib does not
+    attach handlers or hijack logging for the host application. Applications
+    (e.g. the CLIs) opt into visible output by calling setup_logger().
+    """
+    return logging.getLogger(name)
+
+
+AUTHORIZED_USE_NOTICE = (
+    "hwatlib: authorized use only. Run this only against systems you own or have "
+    "explicit written permission to test. Unauthorized access is illegal and is "
+    "solely your responsibility. See SECURITY.md. Set HWAT_NO_BANNER=1 to silence."
+)
+
+_banner_shown = False
+
+
+def authorized_use_banner(*, force: bool = False) -> None:
+    """Print a one-time authorized-use notice to stderr.
+
+    Written to stderr so machine-readable stdout (JSON reports, sitemaps) is
+    never polluted. Suppressed when HWAT_NO_BANNER is set in the environment,
+    which is convenient for scripted/CI runs.
+    """
+    global _banner_shown
+    if _banner_shown and not force:
+        return
+    _banner_shown = True
+    if os.environ.get("HWAT_NO_BANNER"):
+        return
+    print(f"[!] {AUTHORIZED_USE_NOTICE}", file=sys.stderr)
+
+
 def setup_logger(name: str = "hwatlib", level: int = logging.INFO) -> logging.Logger:
+    """Configure a StreamHandler for visible output. For application/CLI use.
+
+    Libraries should not call this at import time; use get_logger() instead.
+    """
     logger = logging.getLogger(name)
-    if not logger.handlers:
+    if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
         handler = logging.StreamHandler()
         formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
         handler.setFormatter(formatter)
@@ -24,14 +65,37 @@ def setup_logger(name: str = "hwatlib", level: int = logging.INFO) -> logging.Lo
     return logger
 
 
-logger = setup_logger()
+logger = get_logger()
 
 
 _IPV4_RE = re.compile(r"^\d+\.\d+\.\d+\.\d+$")
 
 
+def _resolve_with_dnspython(target: str) -> Optional[str]:
+    """Resolve an A record using dnspython, if the optional ``dns`` extra is installed.
+
+    Returns the first A-record address, or None if dnspython is unavailable or
+    resolution fails. ``import dns`` refers to top-level dnspython, not the
+    ``hwatlib.dns`` submodule.
+    """
+    try:
+        import dns.resolver  # type: ignore
+    except ImportError:
+        return None
+    try:
+        for rdata in dns.resolver.resolve(target, "A"):
+            return str(rdata)
+    except Exception as e:  # dns.exception.DNSException and friends
+        logger.debug("dnspython resolution failed target=%s error=%s", target, e)
+    return None
+
+
 def resolve_host(target: str) -> Optional[str]:
     """Resolve a hostname to an IPv4 address.
+
+    Resolution order: the input itself if already an IPv4 literal, then the
+    stdlib resolver, then dnspython (the optional ``dns`` extra), and finally a
+    ``nslookup`` subprocess as a last resort.
 
     Returns:
     - IPv4 string when resolved
@@ -47,7 +111,12 @@ def resolve_host(target: str) -> Optional[str]:
     try:
         return socket.gethostbyname(target)
     except socket.gaierror:
-        # Fallback to nslookup when available (common on pentest boxes)
+        # Prefer the dnspython library path (no subprocess) when available.
+        resolved = _resolve_with_dnspython(target)
+        if resolved:
+            return resolved
+
+        # Last resort: nslookup, if present (common on pentest boxes).
         try:
             result = subprocess.check_output(["nslookup", target], stderr=subprocess.STDOUT).decode(errors="ignore")
             match = re.search(r"Address: (\d+\.\d+\.\d+\.\d+)", result)
@@ -123,19 +192,20 @@ def check_sudo() -> bool:
         return False
 
 
-def fetch_url(url: str, timeout: int = 5, *, verify: bool = True, suppress_insecure_warning: bool = False) -> Optional[str]:
+def fetch_url(url: str, timeout: float = 5.0, *, verify: bool = True, suppress_insecure_warning: bool = False) -> Optional[str]:
     """Fetch contents of a URL.
 
     Safer default: TLS verification is enabled by default.
     To disable verification, pass verify=False explicitly.
     """
     try:
-        if verify is False and suppress_insecure_warning:
-            warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
-            urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-        resp = requests.get(url, timeout=timeout, verify=verify)
-        return resp.text
+        # Scope any warning suppression to this call only, so one insecure
+        # request does not silence InsecureRequestWarning process-wide.
+        with warnings.catch_warnings():
+            if verify is False and suppress_insecure_warning:
+                warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
+            resp = requests.get(url, timeout=timeout, verify=verify)
+            return resp.text
     except requests.RequestException as e:
         logger.error("Failed to fetch url=%s: %s", url, e)
         return None

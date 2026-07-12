@@ -5,9 +5,9 @@ import json
 import re
 import urllib.parse
 from pathlib import Path
-from typing import Any, Dict, List, Optional
-from xml.etree import ElementTree as ET
+from typing import Any, Dict, List, Mapping, Optional
 
+import defusedxml.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 
@@ -22,27 +22,44 @@ from .models import (
     WebFormField,
     WebResult,
 )
-from .utils import setup_logger
+from .utils import authorized_use_banner, get_logger, setup_logger
 
 HTML_PARSER = "html.parser"
 
 
-logger = setup_logger()
+logger = get_logger()
 
 
 def _normalize_target(target: str) -> str:
     return target if target.startswith("http://") or target.startswith("https://") else "http://" + target
 
 
+def _attr_str(value: Any) -> Optional[str]:
+    """Coerce a BeautifulSoup attribute value to Optional[str].
+
+    Multi-valued attributes (e.g. ``class``) are returned by bs4 as a list;
+    join them so callers always get a plain string or None.
+    """
+    if value is None or isinstance(value, str):
+        return value
+    return " ".join(str(v) for v in value)
+
+
 def _parse_forms_from_html(html: str) -> List[WebForm]:
     soup = BeautifulSoup(html or "", HTML_PARSER)
     forms: List[WebForm] = []
     for form in soup.find_all("form"):
-        action = form.get("action")
-        method = (form.get("method") or "GET").upper()
+        action = _attr_str(form.get("action"))
+        method = (_attr_str(form.get("method")) or "GET").upper()
         inputs: List[WebFormField] = []
         for i in form.find_all(["input", "textarea", "select"]):
-            inputs.append(WebFormField(name=i.get("name"), type=i.get("type"), value=i.get("value")))
+            inputs.append(
+                WebFormField(
+                    name=_attr_str(i.get("name")),
+                    type=_attr_str(i.get("type")),
+                    value=_attr_str(i.get("value")),
+                )
+            )
         forms.append(WebForm(action=action, method=method, inputs=inputs))
     return forms
 
@@ -51,13 +68,13 @@ def _extract_script_urls(base: str, html: str) -> List[str]:
     soup = BeautifulSoup(html or "", HTML_PARSER)
     scripts: List[str] = []
     for tag in soup.find_all("script"):
-        src = tag.get("src")
+        src = _attr_str(tag.get("src"))
         if src:
             scripts.append(urllib.parse.urljoin(base, src))
     return scripts
 
 
-def _build_web_fetch_result(base: str, headers: Dict[str, Any], html: str) -> WebFetchResult:
+def _build_web_fetch_result(base: str, headers: Mapping[str, Any], html: str) -> WebFetchResult:
     return WebFetchResult(
         headers={str(k): str(v) for k, v in (headers or {}).items()},
         forms=_parse_forms_from_html(html),
@@ -202,7 +219,7 @@ class WebScanner:
 # README-compatible functional API
 # ----------------
 
-def fetch_headers(url: str, *, timeout: int = 5, session: Optional[requests.Session] = None) -> Dict[str, str]:
+def fetch_headers(url: str, *, timeout: float = 5, session: Optional[requests.Session] = None) -> Dict[str, str]:
     """Fetch and return response headers (README: web.fetch_headers())."""
 
     s = session or requests.Session()
@@ -210,12 +227,12 @@ def fetch_headers(url: str, *, timeout: int = 5, session: Optional[requests.Sess
     return dict(r.headers)
 
 
-def fetch_headers_http(url: str, *, client: HttpClient, timeout: int = 5) -> Dict[str, str]:
+def fetch_headers_http(url: str, *, client: HttpClient, timeout: float = 5) -> Dict[str, str]:
     r = client.get(_normalize_target(url), timeout=timeout)
     return dict(r.headers)
 
 
-def fetch_forms(url: str, *, timeout: int = 5, session: Optional[requests.Session] = None) -> List[WebForm]:
+def fetch_forms(url: str, *, timeout: float = 5, session: Optional[requests.Session] = None) -> List[WebForm]:
     """Fetch a page and extract HTML forms (README: web.fetch_forms())."""
 
     s = session or requests.Session()
@@ -223,12 +240,12 @@ def fetch_forms(url: str, *, timeout: int = 5, session: Optional[requests.Sessio
     return _parse_forms_from_html(r.text)
 
 
-def fetch_forms_http(url: str, *, client: HttpClient, timeout: int = 5) -> List[WebForm]:
+def fetch_forms_http(url: str, *, client: HttpClient, timeout: float = 5) -> List[WebForm]:
     r = client.get(_normalize_target(url), timeout=timeout)
     return _parse_forms_from_html(r.text)
 
 
-def fetch_js(url: str, *, timeout: int = 5, session: Optional[requests.Session] = None) -> List[str]:
+def fetch_js(url: str, *, timeout: float = 5, session: Optional[requests.Session] = None) -> List[str]:
     """Fetch a page and return referenced JS URLs (README: web.fetch_js())."""
 
     s = session or requests.Session()
@@ -237,13 +254,13 @@ def fetch_js(url: str, *, timeout: int = 5, session: Optional[requests.Session] 
     return _extract_script_urls(base, r.text)
 
 
-def fetch_js_http(url: str, *, client: HttpClient, timeout: int = 5) -> List[str]:
+def fetch_js_http(url: str, *, client: HttpClient, timeout: float = 5) -> List[str]:
     base = _normalize_target(url)
     r = client.get(base, timeout=timeout)
     return _extract_script_urls(base, r.text)
 
 
-def fetch_all(url: str, *, timeout: int = 5, client: Optional[HttpClient] = None) -> WebFetchResult:
+def fetch_all(url: str, *, timeout: float = 5, client: Optional[HttpClient] = None) -> WebFetchResult:
     """Convenience wrapper used in README (web.fetch_all()).
 
     If client is provided, uses the shared HttpClient options (timeout, verify, proxies, retries).
@@ -259,7 +276,7 @@ def fetch_all(url: str, *, timeout: int = 5, client: Optional[HttpClient] = None
     return _build_web_fetch_result(base, r.headers, r.text)
 
 
-def fetch_all_dict(url: str, *, timeout: int = 5, client: Optional[HttpClient] = None) -> Dict[str, Any]:
+def fetch_all_dict(url: str, *, timeout: float = 5, client: Optional[HttpClient] = None) -> Dict[str, Any]:
     return fetch_all(url, timeout=timeout, client=client).to_dict()
 
 
@@ -279,7 +296,7 @@ async def fetch_all_async_dict(url: str, *, client: Optional[AsyncHttpClient] = 
     return (await fetch_all_async(url, client=client)).to_dict()
 
 
-def crawl(url: str, *, depth: int = 2, client: Optional[HttpClient] = None, timeout: int = 5) -> CrawlResult:
+def crawl(url: str, *, depth: int = 2, client: Optional[HttpClient] = None, timeout: float = 5) -> CrawlResult:
     """Best-effort crawler returning a simple sitemap-like output."""
 
     base = _normalize_target(url)
@@ -294,7 +311,7 @@ def crawl(url: str, *, depth: int = 2, client: Optional[HttpClient] = None, time
     return CrawlResult(base=base, count=len(found), links=found, sitemaps=sitemaps)
 
 
-def crawl_dict(url: str, *, depth: int = 2, client: Optional[HttpClient] = None, timeout: int = 5) -> Dict[str, Any]:
+def crawl_dict(url: str, *, depth: int = 2, client: Optional[HttpClient] = None, timeout: float = 5) -> Dict[str, Any]:
     return crawl(url, depth=depth, client=client, timeout=timeout).to_dict()
 
 
@@ -429,14 +446,17 @@ def _extract_links(base: str, page_url: str, html: str) -> List[str]:
     soup = BeautifulSoup(html, HTML_PARSER)
     out: List[str] = []
     for a in soup.find_all("a", href=True):
-        abs_url = urllib.parse.urljoin(page_url, a["href"])
+        href = _attr_str(a.get("href"))
+        if href is None:
+            continue
+        abs_url = urllib.parse.urljoin(page_url, href)
         abs_url = canonicalize_url(abs_url)
         if abs_url.startswith(canonicalize_url(base)):
             out.append(abs_url)
     return out
 
 
-def discover_sitemaps(url: str, *, client: Optional[HttpClient] = None, timeout: int = 5) -> SitemapDiscovery:
+def discover_sitemaps(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5) -> SitemapDiscovery:
     """Discover sitemap URLs via robots.txt and /sitemap.xml (read-only)."""
 
     base = _normalize_target(url)
@@ -457,7 +477,7 @@ def discover_sitemaps(url: str, *, client: Optional[HttpClient] = None, timeout:
     )
 
 
-def discover_sitemaps_dict(url: str, *, client: Optional[HttpClient] = None, timeout: int = 5) -> Dict[str, Any]:
+def discover_sitemaps_dict(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5) -> Dict[str, Any]:
     return discover_sitemaps(url, client=client, timeout=timeout).to_dict()
 
 
@@ -503,7 +523,7 @@ def export_sitemap_csv(base: str, links: List[str], path: str) -> None:
             w.writerow([u])
 
 
-def _fetch_text(url: str, *, client: Optional[HttpClient], timeout: int) -> Optional[str]:
+def _fetch_text(url: str, *, client: Optional[HttpClient], timeout: float) -> Optional[str]:
     try:
         if client is not None:
             return client.get(url, timeout=timeout).text
@@ -553,7 +573,7 @@ def _parse_sitemap_xml_locs(text: str) -> List[str]:
         return []
 
 
-def fingerprint_tech(url: str, *, client: Optional[HttpClient] = None, timeout: int = 5) -> TechFingerprint:
+def fingerprint_tech(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5) -> TechFingerprint:
     """Very lightweight tech hints from headers/body markers."""
 
     base = _normalize_target(url)
@@ -577,7 +597,7 @@ def fingerprint_tech(url: str, *, client: Optional[HttpClient] = None, timeout: 
     return TechFingerprint(ok=True, server=server, x_powered_by=powered_by, cookies=cookies, hints=hints)
 
 
-def fingerprint_tech_dict(url: str, *, client: Optional[HttpClient] = None, timeout: int = 5) -> Dict[str, Any]:
+def fingerprint_tech_dict(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5) -> Dict[str, Any]:
     return fingerprint_tech(url, client=client, timeout=timeout).to_dict()
 
 
@@ -612,7 +632,7 @@ async def fingerprint_tech_async_dict(url: str, *, client: Optional[AsyncHttpCli
     return (await fingerprint_tech_async(url, client=client)).to_dict()
 
 
-def scan(url: str, *, client: Optional[HttpClient] = None, timeout: int = 5, depth: int = 2) -> WebResult:
+def scan(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5, depth: int = 2) -> WebResult:
     try:
         fetch = fetch_all(url, timeout=timeout, client=client)
         tech = fingerprint_tech(url, timeout=timeout, client=client)
@@ -699,6 +719,8 @@ def _tech_from_headers(headers: Dict[str, str]) -> List[str]:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    setup_logger()
+    authorized_use_banner()
     parser = argparse.ArgumentParser(prog="hwat-web", description="hwatlib web enumeration helpers")
     parser.add_argument("url", help="Target URL")
     args = parser.parse_args(argv)

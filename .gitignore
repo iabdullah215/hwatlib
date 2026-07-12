@@ -17,6 +17,9 @@ dist/
 *.egg-info/
 .eggs/
 
+# Stray src-layout dir (package uses flat layout; see pyproject where = ["."])
+src/
+
 # Test / coverage
 .pytest_cache/
 .mypy_cache/

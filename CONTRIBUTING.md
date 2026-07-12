@@ -41,7 +41,18 @@ pytest --cov=hwatlib --cov-report=term-missing   # tests with coverage
 ```
 
 CI additionally enforces an **80% coverage threshold on changed files** for pull
-requests, and runs packaging checks (`python -m build` + `twine check`).
+requests, runs security scans (`bandit`, `pip-audit`, CodeQL), and runs
+packaging checks (`python -m build` + `twine check`).
+
+### Pre-commit hooks
+
+A [`pre-commit`](https://pre-commit.com/) config runs ruff, mypy, and basic
+hygiene checks before each commit so issues are caught locally:
+
+```bash
+pre-commit install          # one-time, enables the git hook
+pre-commit run --all-files  # run against the whole tree
+```
 
 ## Pull Request Guidelines
 

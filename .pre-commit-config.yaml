@@ -1,0 +1,33 @@
+# Pre-commit hooks for hwatlib. Install once with:
+#   pip install -e ".[dev,async,dns]" && pre-commit install
+# Run against everything with:
+#   pre-commit run --all-files
+#
+# ruff and mypy run from the local dev environment (language: system) so their
+# versions always match the pins in pyproject.toml and the CI jobs exactly.
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (lint + autofix)
+        entry: ruff check --fix
+        language: system
+        types_or: [python, pyi]
+        require_serial: true
+
+      - id: mypy
+        name: mypy (type check)
+        entry: mypy
+        language: system
+        types: [python]
+        pass_filenames: false

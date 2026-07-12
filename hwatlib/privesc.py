@@ -3,6 +3,7 @@ from typing import Any, Dict, List, Optional
 
 from . import postex
 from .models import PrivescScore
+from .utils import authorized_use_banner
 
 CONFIRM_HELP = "Actually perform the change"
 
@@ -90,7 +91,8 @@ def risk_score_dict(report: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def main(argv: Optional[List[str]] = None) -> int:
-    parser = argparse.ArgumentParser(prog="hwat-post", description="hwatlib privesc/post-exploitation helpers")
+    authorized_use_banner()
+    parser = argparse.ArgumentParser(prog="hwat-privesc", description="hwatlib privesc/post-exploitation helpers")
     sub = parser.add_subparsers(dest="cmd")
 
     sub.add_parser("checks", help="Run read-only post-exploitation checks (default)")

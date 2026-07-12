@@ -8,9 +8,9 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from .models import NmapResult
-from .utils import resolve_host, setup_logger
+from .utils import authorized_use_banner, get_logger, resolve_host, setup_logger
 
-logger = setup_logger()
+logger = get_logger()
 
 DEFAULT_NMAP_OPTIONS = "-sV -sC -A"
 
@@ -224,6 +224,8 @@ async def banner_grab_async(
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    setup_logger()
+    authorized_use_banner()
     parser = argparse.ArgumentParser(prog="hwat-recon", description="hwatlib recon helpers")
     parser.add_argument("target", help="Domain or IP")
     parser.add_argument("--add-to-hosts", action="store_true", help="Append domain->IP to /etc/hosts")

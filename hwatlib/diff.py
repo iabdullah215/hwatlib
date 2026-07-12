@@ -125,11 +125,15 @@ def _diff_findings(old: List[Dict[str, Any]], new: List[Dict[str, Any]]) -> Dict
 
 
 def _diff_web(old_web: Dict[str, Any], new_web: Dict[str, Any]) -> Dict[str, Any]:
-    old_tech = old_web.get("tech") if isinstance(old_web.get("tech"), dict) else {}
-    new_tech = new_web.get("tech") if isinstance(new_web.get("tech"), dict) else {}
+    old_tech = old_web.get("tech")
+    old_tech = old_tech if isinstance(old_tech, dict) else {}
+    new_tech = new_web.get("tech")
+    new_tech = new_tech if isinstance(new_tech, dict) else {}
 
-    old_hints = set(old_tech.get("hints") or []) if isinstance(old_tech.get("hints"), list) else set()
-    new_hints = set(new_tech.get("hints") or []) if isinstance(new_tech.get("hints"), list) else set()
+    old_hints_val = old_tech.get("hints")
+    old_hints = set(old_hints_val) if isinstance(old_hints_val, list) else set()
+    new_hints_val = new_tech.get("hints")
+    new_hints = set(new_hints_val) if isinstance(new_hints_val, list) else set()
 
     return {
         "tech_hints_added": sorted(new_hints - old_hints),
@@ -138,8 +142,10 @@ def _diff_web(old_web: Dict[str, Any], new_web: Dict[str, Any]) -> Dict[str, Any
 
 
 def _diff_recon(old_recon: Dict[str, Any], new_recon: Dict[str, Any]) -> Dict[str, Any]:
-    old_fp = old_recon.get("fingerprint") if isinstance(old_recon.get("fingerprint"), dict) else {}
-    new_fp = new_recon.get("fingerprint") if isinstance(new_recon.get("fingerprint"), dict) else {}
+    old_fp = old_recon.get("fingerprint")
+    old_fp = old_fp if isinstance(old_fp, dict) else {}
+    new_fp = new_recon.get("fingerprint")
+    new_fp = new_fp if isinstance(new_fp, dict) else {}
 
     old_ports = {str(k) for k in old_fp.keys()}
     new_ports = {str(k) for k in new_fp.keys()}

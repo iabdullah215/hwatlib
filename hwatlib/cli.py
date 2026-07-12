@@ -11,11 +11,13 @@ from .config import load_config
 from .http import HttpOptions
 from .plugins import list_checks
 from .report import HwatReport
+from .utils import authorized_use_banner
 from .web import export_sitemap_csv, export_sitemap_json
 from .workflows import build_report
 
 
 def main(argv: Optional[List[str]] = None) -> int:
+    authorized_use_banner()
     parser = argparse.ArgumentParser(prog="hwat", description="hwatlib unified CLI")
     sub = parser.add_subparsers(dest="cmd")
 
@@ -204,7 +206,7 @@ def _get_sitemap(report: HwatReport):
             return None
 
         sitemap = web.get("sitemap")
-        if hasattr(sitemap, "to_dict"):
+        if sitemap is not None and hasattr(sitemap, "to_dict"):
             sitemap = sitemap.to_dict()
         if not isinstance(sitemap, dict):
             return None

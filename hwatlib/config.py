@@ -7,9 +7,9 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 
 from .http import HttpOptions
-from .utils import setup_logger
+from .utils import get_logger
 
-logger = setup_logger()
+logger = get_logger()
 
 _MAX_TIMEOUT = 300.0
 _MAX_RATE_LIMIT = 10_000.0

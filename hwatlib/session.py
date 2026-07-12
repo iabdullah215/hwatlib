@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional
 
 from .http import HttpClient, HttpOptions
-from .utils import resolve_host, setup_logger
+from .utils import get_logger, resolve_host
 
 
 @dataclass
@@ -21,7 +21,7 @@ class HwatSession:
 
     @property
     def logger(self):
-        return setup_logger(self.logger_name)
+        return get_logger(self.logger_name)
 
     def ensure_ip(self) -> Optional[str]:
         if self.ip:

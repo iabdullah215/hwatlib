@@ -127,3 +127,49 @@ jobs:
         run: |
           python -m pip install --force-reinstall dist/*.whl
           python -c "import hwatlib; print(hwatlib.__version__)"
+
+  sast:
+    name: SAST (bandit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install bandit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "bandit[toml]>=1.7,<2"
+
+      - name: Run bandit
+        # Gate the build on medium+ severity findings. Low-severity results
+        # (subprocess use, broad excepts) are inherent to offensive tooling and
+        # are surfaced but not blocking; review them in the job output.
+        run: bandit -r hwatlib -ll
+
+  deps-audit:
+    name: Dependency Audit (pip-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install project + pip-audit
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install pip-audit
+          python -m pip install -e ".[async,dns]"
+
+      - name: Audit dependencies for known CVEs
+        # CVE-2026-44405 (paramiko): no fixed upstream release is available yet;
+        # remove this ignore once one is published. Any new/other CVE fails CI.
+        run: pip-audit --progress-spinner off --ignore-vuln CVE-2026-44405

@@ -2,6 +2,14 @@
 
 A practical pentesting and exploitation library with wrappers for recon, web enumeration, reverse shells, and privilege escalation.
 
+> ⚠️ **Authorized use only.** `hwatlib` is offensive-security tooling. Use it
+> **only** against systems you own or have **explicit, prior, written
+> permission** to test. Unauthorized access to computer systems is illegal in
+> most jurisdictions, and you are solely responsible for how you use this
+> software. See [SECURITY.md](SECURITY.md) for the full responsible-use policy.
+> The CLIs print this reminder to stderr on each run; set `HWAT_NO_BANNER=1` to
+> silence it in authorized, scripted environments.
+
 ---
 
 To install, run:
@@ -78,11 +86,12 @@ hwat report <target>
 hwat-recon <target>
 hwat-web <url>
 hwat-exploit <ip> <port>
-hwat-post
+hwat-privesc          # privesc + post-exploitation checks and actions
+hwat-postex           # post-exploitation recon report
 
 # State-changing actions are gated behind --confirm
-hwat-post add-cronjob "id" --schedule "*/5 * * * *" --confirm
-hwat-post backdoor-ssh "ssh-ed25519 AAAA..." --confirm
+hwat-privesc add-cronjob "id" --schedule "*/5 * * * *" --confirm
+hwat-privesc backdoor-ssh "ssh-ed25519 AAAA..." --confirm
 ```
 
 ### Unified Report CLI
@@ -183,6 +192,19 @@ export HWAT_HEADERS_JSON='{"User-Agent":"hwatlib"}'
 ```
 
 Hwatlib is under continuous development and more features for pentesting, recon, exploitation, and post-exploitation will be added.
+
+## Examples & API Documentation
+
+Runnable examples live in [`examples/`](examples/) (payload generation is offline;
+recon/web examples require an authorized target).
+
+API reference docs are generated from docstrings with [`pdoc`](https://pdoc.dev/):
+
+```bash
+pip install -e ".[dev]"
+make docs          # writes a static site to ./site
+make docs-serve    # serves live docs at http://localhost:8080
+```
 
 ## Safer Defaults
 

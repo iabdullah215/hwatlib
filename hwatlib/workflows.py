@@ -14,9 +14,9 @@ from .http import HttpOptions
 from .models import DnsResultTyped, NmapResult, PrivescResult, ReconResult, WebResult
 from .report import HwatReport, new_report
 from .session import HwatSession, new_session
-from .utils import setup_logger
+from .utils import get_logger
 
-logger = setup_logger()
+logger = get_logger()
 
 
 def build_report(
