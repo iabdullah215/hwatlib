@@ -26,7 +26,8 @@ python -m venv .venv
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 
 # Install in editable mode with all development extras
-pip install -e ".[dev,async,dns]"
+# (dev = test/lint/type tools + pre-commit; security = bandit/pip-audit; docs = pdoc)
+pip install -e ".[dev,security,docs,async,dns]"
 ```
 
 ## Quality Checks

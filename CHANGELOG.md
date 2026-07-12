@@ -41,7 +41,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - Hardened sitemap XML parsing against XXE/entity-expansion attacks by switching
   to `defusedxml` (sitemaps are attacker-controlled input).
-- Bumped `pytest` to resolve a known dev-dependency CVE.
+- Allowed `pytest` 9 (which fixes a known dev-only CVE) on Python 3.10+ while
+  keeping `pytest` 8 on 3.9, since pytest 9 dropped Python 3.9 support.
 - Cross-version TOML config parsing and Python 3.9 import-time annotation
   handling.
 

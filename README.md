@@ -201,7 +201,7 @@ recon/web examples require an authorized target).
 API reference docs are generated from docstrings with [`pdoc`](https://pdoc.dev/):
 
 ```bash
-pip install -e ".[dev]"
+pip install -e ".[docs]"
 make docs          # writes a static site to ./site
 make docs-serve    # serves live docs at http://localhost:8080
 ```

@@ -33,17 +33,22 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Core test/lint/type tooling installed by the CI matrix (must resolve on 3.9+).
+# pytest is capped below 9 on Python 3.9 automatically via requires-python:
+# pip selects pytest 9 on 3.10+ and pytest 8 on 3.9.
 dev = [
-	"pytest>=9,<10",
+	"pytest>=8,<10",
 	"pytest-cov>=5,<7",
 	"ruff>=0.6,<1",
 	"mypy>=1.11,<2",
 	"types-requests>=2.32,<3",
+	"pre-commit>=3,<5",
+]
+security = [
 	"bandit[toml]>=1.7,<2",
 	"pip-audit>=2.7,<3",
-	"pre-commit>=3,<5",
-	"pdoc>=14,<16",
 ]
+docs = ["pdoc>=14,<16"]
 async = ["aiohttp>=3.9,<4"]
 dns = ["dnspython>=2.6,<3"]
 
