@@ -92,6 +92,7 @@ class HttpClient:
                 warnings.simplefilter("ignore", urllib3.exceptions.InsecureRequestWarning)
                 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
             except Exception:
+                # Best effort: silencing the TLS warning is optional, never fatal.
                 pass
 
         return self.session.request(method, url, timeout=timeout, verify=verify, auth=auth, **kwargs)

@@ -215,6 +215,7 @@ async def banner_grab_async(
                     try:
                         await writer.wait_closed()
                     except Exception:
+                        # Best effort: the connection is being torn down anyway.
                         pass
             except Exception:
                 return port, None

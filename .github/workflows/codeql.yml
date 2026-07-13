@@ -26,7 +26,15 @@ jobs:
         uses: github/codeql-action/init@v3
         with:
           languages: python
-          queries: security-and-quality
+          # Security-focused suite: keeps all security queries but drops the
+          # code-quality/style "Note" rules that are noise for offensive tooling
+          # (empty except, unused global, import style, etc.).
+          queries: security-extended
+          # Analyze the shipped library only; examples and tests are not shipped.
+          config: |
+            paths-ignore:
+              - examples
+              - tests
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3

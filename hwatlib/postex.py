@@ -242,6 +242,7 @@ def search_history():
             try:
                 lines.extend(hist.read_text(encoding="utf-8", errors="ignore").splitlines())
             except Exception:
+                # Best effort: history file may be unreadable (permissions).
                 pass
 
     current = Path.home() / ".bash_history"
@@ -249,6 +250,7 @@ def search_history():
         try:
             lines.extend(current.read_text(encoding="utf-8", errors="ignore").splitlines())
         except Exception:
+            # Best effort: history file may be unreadable (permissions).
             pass
 
     return "\n".join(lines)
