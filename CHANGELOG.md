@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-13
+
 ### Changed
 - **CLI (breaking):** replaced the ambiguous `hwat-post` console script with
   `hwat-privesc` (privesc + post-exploitation actions, formerly `hwat-post`) and
@@ -63,5 +65,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Safer defaults: TLS verification on by default; state-changing
   post-exploitation helpers gated behind explicit confirmation.
 
-[Unreleased]: https://github.com/iabdullah215/hwatlib/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/iabdullah215/hwatlib/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/iabdullah215/hwatlib/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/iabdullah215/hwatlib/releases/tag/v0.2.0
