@@ -23,9 +23,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hung tool can never block the caller.
 - Property-based tests (Hypothesis) for parsers/scoring and opt-in mutation
   testing (mutmut) for the scoring logic (`make mutants`).
+- **Automated release pipeline** (`release.yml`): PyPI **Trusted Publishing**
+  (OIDC, no stored tokens), CycloneDX **SBOM**, SLSA **build-provenance
+  attestation**, and **Sigstore** signing; documented in `RELEASING.md`.
+- **API docs published to GitHub Pages** on each release (`docs.yml`).
+- **Governance & security docs**: `THREAT_MODEL.md` (the tool's own security
+  posture), `GOVERNANCE.md` (branch protection, required checks, signed
+  commits) with a `scripts/setup-branch-protection.sh` helper, and
+  `.github/CODEOWNERS`.
 
 ### Changed
 - Raised the global coverage floor from 50% to 80%.
+- Grouped GitHub Actions Dependabot updates into a single PR.
+
+### Fixed
+- Python 3.9 compatibility: `AsyncHttpClient` now creates its `asyncio.Semaphore`
+  lazily inside a running loop instead of at construction time.
+- Python 3.9/3.10 compatibility: `recon.banner_grab_async` uses `asyncio.wait_for`
+  instead of the 3.11+ `asyncio.timeout`, which previously returned no banners on
+  older interpreters.
 
 ## [0.3.0] - 2026-07-13
 
