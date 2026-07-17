@@ -81,7 +81,7 @@ jobs:
           HEAD_SHA: ${{ github.sha }}
           CHANGED_FILE_COVERAGE_MIN: "80"
         run: |
-          python -m coverage report --version
+          python -m coverage --version
           git diff --name-only "$BASE_SHA...$HEAD_SHA" -- 'hwatlib/**/*.py' > changed_python_files.txt
 
           if [ ! -s changed_python_files.txt ]; then

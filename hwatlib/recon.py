@@ -226,13 +226,14 @@ async def banner_grab_async(
     async def grab_one(port: int) -> tuple[int, Optional[str]]:
         async with sem:
             try:
-                async with asyncio.timeout(2.0):
-                    reader, writer = await asyncio.open_connection(host, port)
+                # asyncio.wait_for works on Python 3.9+ (asyncio.timeout is 3.11+).
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port), timeout=2.0
+                )
                 try:
                     writer.write(b"HEAD / HTTP/1.0\r\n\r\n")
                     await writer.drain()
-                    async with asyncio.timeout(2.0):
-                        data = await reader.read(1024)
+                    data = await asyncio.wait_for(reader.read(1024), timeout=2.0)
                     text = data.decode(errors="ignore").strip().split("\n")[0] if data else "Open (no banner)"
                     return port, text
                 finally:

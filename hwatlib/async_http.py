@@ -30,7 +30,10 @@ class AsyncHttpClient:
     def __init__(self, *, options: Optional[HttpOptions] = None):
         self.options = options or HttpOptions()
         self._last_request_at: Optional[float] = None
-        self._sem = asyncio.Semaphore(max(1, int(self.options.max_concurrency or 1)))
+        # Created lazily inside a running loop: on Python 3.9 constructing an
+        # asyncio.Semaphore binds the current event loop eagerly, which fails if
+        # the client is instantiated outside a coroutine.
+        self._sem: Optional[asyncio.Semaphore] = None
 
         try:
             import aiohttp  # type: ignore
@@ -159,6 +162,8 @@ class AsyncHttpClient:
         auth: Any,
     ) -> AsyncResponse:
         assert self._session is not None
+        if self._sem is None:
+            self._sem = asyncio.Semaphore(max(1, int(self.options.max_concurrency or 1)))
         async with self._sem:
             async with self._session.request(method, url, proxy=proxy, auth=auth, **kwargs) as resp:
                 text = await resp.text(errors="ignore")
