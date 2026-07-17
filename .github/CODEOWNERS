@@ -1,0 +1,16 @@
+# Code owners for hwatlib. Requested for review automatically on PRs, and
+# required by branch protection (see GOVERNANCE.md).
+
+# Default owner for everything in the repo.
+*                       @iabdullah215
+
+# Security-sensitive areas: the offensive helpers, packaging, CI/release,
+# and security policy/threat model warrant explicit owner review.
+/hwatlib/postex.py      @iabdullah215
+/hwatlib/exploit.py     @iabdullah215
+/hwatlib/privesc.py     @iabdullah215
+/.github/               @iabdullah215
+/pyproject.toml         @iabdullah215
+/SECURITY.md            @iabdullah215
+/THREAT_MODEL.md        @iabdullah215
+/GOVERNANCE.md          @iabdullah215

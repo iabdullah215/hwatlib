@@ -28,6 +28,12 @@ src/
 coverage.xml
 .coverage
 htmlcov/
+.hypothesis/
+
+# Mutation testing (mutmut) sandbox and cache
+mutants/
+.mutmut-cache
+mutmut-stats.json
 
 # Editor
 .vscode/

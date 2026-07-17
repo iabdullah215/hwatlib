@@ -6,6 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from .exceptions import ConfigError
 from .http import HttpOptions
 from .utils import get_logger
 
@@ -221,10 +222,10 @@ def _load_json_dict(value: str, *, strict: bool) -> Optional[Dict[str, str]]:
             return {str(k): str(v) for k, v in obj.items()}
     except json.JSONDecodeError as err:
         if strict:
-            raise ValueError("Invalid JSON object") from err
+            raise ConfigError("Invalid JSON object") from err
         return None
     if strict:
-        raise ValueError("JSON value is not an object")
+        raise ConfigError("JSON value is not an object")
     return None
 
 
@@ -388,5 +389,5 @@ def _validate_optional_float(
 
 def _config_issue(message: str, *, strict: bool) -> None:
     if strict:
-        raise ValueError(message)
+        raise ConfigError(message)
     logger.warning(message)

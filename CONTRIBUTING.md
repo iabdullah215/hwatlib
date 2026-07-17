@@ -41,9 +41,30 @@ mypy                      # type-check
 pytest --cov=hwatlib --cov-report=term-missing   # tests with coverage
 ```
 
-CI additionally enforces an **80% coverage threshold on changed files** for pull
-requests, runs security scans (`bandit`, `pip-audit`, CodeQL), and runs
-packaging checks (`python -m build` + `twine check`).
+The suite enforces a **global 80% coverage floor** (`fail_under` in
+`pyproject.toml`); CI additionally enforces an **80% coverage threshold on
+changed files** for pull requests, runs security scans (`bandit`, `pip-audit`,
+CodeQL), and runs packaging checks (`python -m build` + `twine check`).
+
+### Property-based tests
+
+Parser and scoring logic is fuzzed with [Hypothesis](https://hypothesis.works/)
+(see `tests/test_property_parsers.py`). When adding or changing a parser or a
+scoring heuristic, prefer asserting invariants (bounds, idempotence, "never
+raises on untrusted input") over a handful of hand-picked examples.
+
+### Mutation testing (optional)
+
+The scoring logic (`privesc.py`, `findings.py`) is covered by mutation testing
+to confirm the tests actually assert behaviour rather than just executing lines:
+
+```bash
+pip install -e ".[dev,mutation,async,dns]"
+make mutants          # mutmut run + results (scoped via [tool.mutmut])
+```
+
+A surviving mutant means a code change that no test caught — add or tighten a
+test until it is killed.
 
 ### Pre-commit hooks
 
@@ -71,7 +92,20 @@ pre-commit run --all-files  # run against the whole tree
    must be opt-in.
 6. **Never commit virtual environments, build artifacts, or caches.** They are
    listed in `.gitignore`; keep them out of version control.
-7. Write clear commit messages and a PR description explaining the *why*.
+7. **Sign your commits.** `main` requires verified signatures; configure SSH or
+   GPG signing once (see [`GOVERNANCE.md`](GOVERNANCE.md#signed-commits)).
+8. Write clear commit messages and a PR description explaining the *why*.
+
+Merging to `main` is gated by branch protection: a passing CI matrix (lint,
+mypy, tests, packaging, bandit, pip-audit, CodeQL), a Code Owner review, and
+signed commits. See [`GOVERNANCE.md`](GOVERNANCE.md) for the full policy and the
+`THREAT_MODEL.md` for the library's security posture.
+
+## Releasing
+
+Releases are automated via GitHub Actions using PyPI Trusted Publishing (OIDC),
+with SBOM generation, build-provenance attestation, and Sigstore signing. See
+[`RELEASING.md`](RELEASING.md) for the process and the one-time maintainer setup.
 
 ## Reporting Bugs & Requesting Features
 

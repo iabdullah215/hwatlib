@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Typed exception hierarchy** (`hwatlib.exceptions`): all library errors now
+  derive from `HwatlibError`, with `ConfigError`, `PluginError`,
+  `DependencyError`, `ScanError`, and `NetworkError` → (`TargetUnreachable`,
+  `RequestError`). Several also subclass the built-in they replaced
+  (`ValueError`/`RuntimeError`) so existing `except` code keeps working.
+- **Structured logging** (`hwatlib.logging_ext`): opt-in JSON log output and a
+  context-local **run id** stamped onto every log record and into report
+  metadata (`report.metadata["run_id"]`) for end-to-end correlation. New
+  `hwat report --log-format {text,json}` flag and `HWAT_LOG_FORMAT=json` env.
+- **Subprocess timeouts** everywhere external tools run: `recon.run_nmap`
+  (default 300s), post-exploitation commands (default 120s, override with
+  `HWAT_CMD_TIMEOUT`), and `utils.run_command`/`nslookup`/`sudo` probes, so a
+  hung tool can never block the caller.
+- Property-based tests (Hypothesis) for parsers/scoring and opt-in mutation
+  testing (mutmut) for the scoring logic (`make mutants`).
+
+### Changed
+- Raised the global coverage floor from 50% to 80%.
+
 ## [0.3.0] - 2026-07-13
 
 ### Changed

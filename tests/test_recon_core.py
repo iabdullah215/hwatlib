@@ -32,7 +32,7 @@ class _FakeBannerSocket:
 
 
 def test_run_nmap_parses_tcp_and_udp_ports(monkeypatch):
-    def fake_check_output(cmd, stderr=None):
+    def fake_check_output(cmd, stderr=None, timeout=None):
         if "-sU" in cmd:
             return b"53/udp open domain\n"
         return b"22/tcp open ssh\n80/tcp open http\n"
@@ -47,7 +47,7 @@ def test_run_nmap_parses_tcp_and_udp_ports(monkeypatch):
 
 
 def test_run_nmap_returns_typed_error_on_failure(monkeypatch):
-    def fake_check_output(_cmd, stderr=None):
+    def fake_check_output(_cmd, stderr=None, timeout=None):
         raise subprocess.CalledProcessError(returncode=1, cmd="nmap")
 
     monkeypatch.setattr(recon.subprocess, "check_output", fake_check_output)

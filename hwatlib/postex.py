@@ -12,6 +12,22 @@ from typing import List, Optional, Sequence, Tuple, Union
 
 from .utils import authorized_use_banner
 
+
+def _default_cmd_timeout() -> float:
+    """Per-command subprocess bound (seconds), overridable via HWAT_CMD_TIMEOUT.
+
+    Post-exploitation commands like ``find / -perm -4000`` can run for a while,
+    so the default is generous, but it must never be unbounded.
+    """
+    raw = os.environ.get("HWAT_CMD_TIMEOUT")
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return 120.0
+
+
 _CRON_SCHEDULE_RE = re.compile(r"^[\d\*/,\-]+(\s+[\d\*/,\-]+){4}$")
 _ALLOWED_STATE_CHANGE_BINARIES = {
     "bash",
@@ -29,7 +45,9 @@ _ALLOWED_STATE_CHANGE_BINARIES = {
 _ALLOWED_SCHTASK_SCHEDULES = {"MINUTE", "HOURLY", "DAILY", "WEEKLY", "MONTHLY", "ONLOGON", "ONSTART", "ONIDLE", "ONCE"}
 
 
-def _run_argv(argv: Sequence[str], *, input_text: Optional[str] = None) -> Tuple[int, str]:
+def _run_argv(
+    argv: Sequence[str], *, input_text: Optional[str] = None, timeout: Optional[float] = None
+) -> Tuple[int, str]:
     try:
         result = subprocess.run(
             list(argv),
@@ -38,12 +56,15 @@ def _run_argv(argv: Sequence[str], *, input_text: Optional[str] = None) -> Tuple
             capture_output=True,
             text=True,
             input=input_text,
+            timeout=timeout if timeout is not None else _default_cmd_timeout(),
         )
         stdout = (result.stdout or "").strip()
         stderr = (result.stderr or "").strip()
         if stdout and stderr:
             return result.returncode, f"{stdout}\n{stderr}"
         return result.returncode, stdout or stderr
+    except subprocess.TimeoutExpired:
+        return 1, f"[-] command timed out: {' '.join(argv)}"
     except Exception as e:
         return 1, str(e)
 

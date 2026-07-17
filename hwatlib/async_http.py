@@ -5,6 +5,7 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
+from .exceptions import DependencyError, RequestError
 from .http import HttpOptions
 
 
@@ -36,7 +37,9 @@ class AsyncHttpClient:
 
             self._aiohttp = aiohttp
         except Exception as e:  # pragma: no cover
-            raise RuntimeError("aiohttp is required (install extras: pip install hwatlib[async])") from e
+            raise DependencyError(
+                "aiohttp is required (install extras: pip install hwatlib[async])"
+            ) from e
 
         self._session: Optional[Any] = None
 
@@ -144,7 +147,7 @@ class AsyncHttpClient:
                     break
                 await _backoff_sleep(attempt, backoff)
 
-        raise RuntimeError(f"Async request failed after retries: {last_exc}")
+        raise RequestError(f"Async request failed after retries: {last_exc}")
 
     async def _request_once(
         self,
