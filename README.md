@@ -206,7 +206,78 @@ make docs          # writes a static site to ./site
 make docs-serve    # serves live docs at http://localhost:8080
 ```
 
+The hosted API reference is published to GitHub Pages automatically on each
+release (see [`.github/workflows/docs.yml`](.github/workflows/docs.yml)).
+
+### Project documentation
+
+- [`SECURITY.md`](SECURITY.md) — responsible use & vulnerability reporting.
+- [`THREAT_MODEL.md`](THREAT_MODEL.md) — the tool's own security posture (what it will/won't do).
+- [`GOVERNANCE.md`](GOVERNANCE.md) — branch protection, required checks, signed commits.
+- [`RELEASING.md`](RELEASING.md) — release process & provenance verification.
+- [`CONTRIBUTING.md`](CONTRIBUTING.md) — dev setup, quality gates, testing.
+
 ## Safer Defaults
 
 - HTTPS requests verify TLS certificates by default. If you *explicitly* need to disable verification, pass `verify=False` (and optionally `suppress_insecure_warning=True`) to `hwatlib.utils.fetch_url()`.
 - State-changing post-exploitation helpers require explicit confirmation. For example, use `postex.add_cronjob_confirmed(..., confirm=True)` or `postex.backdoor_ssh_confirmed(..., confirm=True)`.
+
+## Observability & Robustness
+
+### Structured logging with run IDs
+
+`hwatlib` never configures logging on import (it attaches a `NullHandler`). Opt
+into visible output — text or machine-parseable JSON — and every log line plus
+the report it produces share a **run id** so they can be correlated end-to-end:
+
+```python
+from hwatlib import logging_ext, workflows
+
+logging_ext.setup_json_logging()      # JSON lines on stderr (also HWAT_LOG_FORMAT=json)
+report = workflows.build_report(target="example.com")
+print(report.metadata["run_id"])      # same id that tags every log record
+```
+
+From the CLI:
+
+```bash
+hwat report example.com --log-format json    # diagnostics to stderr, report JSON to stdout
+```
+
+JSON records include `timestamp`, `level`, `logger`, `message`, `run_id`, any
+`extra=` fields, and `exc_info` on errors. Use `logging_ext.new_run_id()` /
+`set_run_id()` to control the id explicitly.
+
+### Timeouts
+
+Every external process is bounded so a stuck tool can't hang the caller:
+
+- Nmap scans: `recon.run_nmap(..., timeout=300.0)` (also on `nmap_scan` / `nmap_scan_typed`).
+- Post-exploitation commands: default 120s, override with `HWAT_CMD_TIMEOUT`.
+- `utils.run_command(..., timeout=60.0)` and the internal `nslookup`/`sudo` probes.
+
+HTTP retries/backoff/timeout are governed by `HttpOptions` (sync `HttpClient`
+and async `AsyncHttpClient`); see the config section above.
+
+### Typed exceptions
+
+All library errors derive from `hwatlib.HwatlibError`, so callers can catch
+precisely instead of using broad `except`:
+
+```python
+from hwatlib import exceptions as exc
+
+try:
+    remote = exploit.connect_remote("10.0.0.1", 4444)
+except exc.TargetUnreachable:
+    ...            # DNS/connection failure
+except exc.HwatlibError:
+    ...            # anything else hwatlib raised
+```
+
+Hierarchy: `HwatlibError` → `ConfigError`, `PluginError`, `DependencyError`,
+`ScanError`, and `NetworkError` → (`TargetUnreachable`, `RequestError`). For
+backwards compatibility several also subclass the built-in they replaced
+(`ConfigError`/`PluginError` are `ValueError`; `DependencyError`/`ScanError`/
+`RequestError` are `RuntimeError`), so existing `except ValueError`/`except
+RuntimeError` code keeps working.

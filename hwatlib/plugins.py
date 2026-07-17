@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Iterable, List, Optional, Sequence
 
+from .exceptions import PluginError
 from .findings import Finding
 from .session import HwatSession
 
@@ -69,7 +70,7 @@ def register_check(
     output_schema: str = "raw",
 ) -> None:
     if not name or not callable(fn):
-        raise ValueError("name and fn are required")
+        raise PluginError("name and fn are required")
     _registry[name] = Plugin(
         meta=PluginMeta(
             name=name,
@@ -92,12 +93,12 @@ def load_check(spec: str) -> CheckFn:
     """Load a check function from a spec: module:function."""
 
     if ":" not in spec:
-        raise ValueError("Plugin spec must be in the form module:function")
+        raise PluginError("Plugin spec must be in the form module:function")
     mod_name, fn_name = spec.split(":", 1)
     module = __import__(mod_name, fromlist=[fn_name])
     fn = getattr(module, fn_name)
     if not callable(fn):
-        raise ValueError(f"{spec} is not callable")
+        raise PluginError(f"{spec} is not callable")
     return fn
 
 

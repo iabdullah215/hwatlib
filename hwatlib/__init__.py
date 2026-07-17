@@ -16,10 +16,12 @@ from . import (
     cli,
     config,
     dns,
+    exceptions,
     exploit,
     findings,
     fingerprint,
     http,
+    logging_ext,
     plugins,
     postex,
     privesc,
@@ -30,6 +32,16 @@ from . import (
     web,
     workflows,
     workflows_async,
+)
+from .exceptions import (
+    ConfigError,
+    DependencyError,
+    HwatlibError,
+    NetworkError,
+    PluginError,
+    RequestError,
+    ScanError,
+    TargetUnreachable,
 )
 
 # Follow the stdlib recommendation for libraries: attach a NullHandler so that
@@ -56,6 +68,17 @@ __all__ = [
     "secrets",
     "workflows",
     "workflows_async",
+    "exceptions",
+    "logging_ext",
+    # Exception hierarchy (re-exported for convenience)
+    "HwatlibError",
+    "ConfigError",
+    "PluginError",
+    "DependencyError",
+    "ScanError",
+    "NetworkError",
+    "TargetUnreachable",
+    "RequestError",
     "__version__",
 ]
 

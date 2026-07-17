@@ -1,0 +1,62 @@
+name: Docs
+
+# Builds the pdoc API reference and publishes it to GitHub Pages. Runs on every
+# published release so the live docs always match the latest shipped version.
+# A manual trigger is provided for out-of-band rebuilds.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+# Least privilege: only the deploy job needs Pages/OIDC write.
+permissions:
+  contents: read
+
+# Allow one concurrent deployment; never cancel an in-flight publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build API docs (pdoc)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install package + docs tooling
+        # Install the async/dns extras too so pdoc can import every submodule
+        # without optional-dependency import warnings.
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[docs,async,dns]"
+
+      - name: Build static docs site
+        run: pdoc -o site hwatlib
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4

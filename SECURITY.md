@@ -20,6 +20,15 @@ By using this software you agree that:
 Unauthorized access to computer systems is illegal in most jurisdictions. If you
 are unsure whether your use is authorized, **do not run this software.**
 
+## Security Posture & Governance
+
+This policy covers *responsible use* and *vulnerability reporting*. For the
+security posture of the tool itself — what it will and will not do, its trust
+boundaries, threats and mitigations — see [`THREAT_MODEL.md`](THREAT_MODEL.md).
+Repository controls (branch protection, required checks, signed commits) are
+documented in [`GOVERNANCE.md`](GOVERNANCE.md), and release provenance in
+[`RELEASING.md`](RELEASING.md).
+
 ## Supported Versions
 
 Security fixes are applied to the latest released minor version on the `main`

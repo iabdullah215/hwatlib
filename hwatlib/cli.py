@@ -50,6 +50,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_report.add_argument("--nmap", action="store_true", help="Enable nmap scan (off by default)")
 
+    p_report.add_argument(
+        "--log-format",
+        choices=["text", "json"],
+        default=None,
+        help="Emit diagnostic logs to stderr in the given format (default: quiet)",
+    )
+
     p_report.add_argument("--out-json", default=None, help="Write full report JSON to file")
     p_report.add_argument("--out-md", default=None, help="Write full report Markdown to file")
     p_report.add_argument("--sitemap-json", default=None, help="Write sitemap links JSON to file")
@@ -73,6 +80,14 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.cmd != "report":
         parser.print_help()
         return 2
+
+    if args.log_format:
+        # Bind a run id up front so any pre-report logs share the report's id.
+        from .logging_ext import new_run_id
+        from .utils import setup_logger
+
+        new_run_id("report")
+        setup_logger(json_format=(args.log_format == "json"))
 
     exit_code = _maybe_list_plugins(args)
     if exit_code is not None:

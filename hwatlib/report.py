@@ -63,7 +63,14 @@ class HwatReport:
 
 
 def new_report(*, target: Optional[str] = None) -> HwatReport:
+    from .logging_ext import get_run_id
+
     meta = {"generated_at": datetime.now(timezone.utc).isoformat()}
     if target:
         meta["target"] = target
+    # Stamp the current run id (if any) so a report can be correlated with the
+    # log lines emitted during the same invocation.
+    run_id = get_run_id()
+    if run_id:
+        meta["run_id"] = run_id
     return HwatReport(metadata=meta)

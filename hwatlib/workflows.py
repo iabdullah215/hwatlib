@@ -11,6 +11,7 @@ from . import secrets as secrets_mod
 from . import web as web_mod
 from .findings import score_report
 from .http import HttpOptions
+from .logging_ext import get_run_id, new_run_id
 from .models import DnsResultTyped, NmapResult, PrivescResult, ReconResult, WebResult
 from .report import HwatReport, new_report
 from .session import HwatSession, new_session
@@ -37,6 +38,10 @@ def build_report(
     - Nmap is off by default; enable with nmap=True.
     """
 
+    # Bind a run id for this report so logs and the report share a correlation
+    # id. Preserve any id the caller already set for this context.
+    if not get_run_id():
+        new_run_id("report")
     session = new_session(target, base_url=url, http_options=http_options)
     report = new_report(target=target)
 

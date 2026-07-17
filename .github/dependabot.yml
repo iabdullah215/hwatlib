@@ -10,8 +10,12 @@ updates:
       python-dependencies:
         patterns: ["*"]
 
-  # Keep GitHub Actions (CI, CodeQL) pinned to current versions.
+  # Keep GitHub Actions (CI, CodeQL, Release) pinned to current versions.
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns: ["*"]

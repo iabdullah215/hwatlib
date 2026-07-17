@@ -11,6 +11,7 @@ from . import workflows as sync_workflows
 from .async_http import AsyncHttpClient
 from .findings import score_report
 from .http import HttpOptions
+from .logging_ext import get_run_id, new_run_id
 from .models import DnsResultTyped, NmapResult, ReconResult, WebResult
 from .report import HwatReport, new_report
 from .session import HwatSession, new_session
@@ -35,6 +36,8 @@ async def build_report_async(
     Non-web parts remain best-effort and synchronous.
     """
 
+    if not get_run_id():
+        new_run_id("report")
     session = new_session(target, base_url=url, http_options=http_options)
     report = new_report(target=target)
 

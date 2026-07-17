@@ -7,12 +7,16 @@ import subprocess
 from dataclasses import dataclass
 from typing import Dict, List, Optional
 
+from .exceptions import ScanError
 from .models import NmapResult
 from .utils import authorized_use_banner, get_logger, resolve_host, setup_logger
 
 logger = get_logger()
 
 DEFAULT_NMAP_OPTIONS = "-sV -sC -A"
+# Nmap can legitimately run for a while, but must never hang forever; callers
+# can override per scan. Kept generous so normal scans are not cut short.
+DEFAULT_NMAP_TIMEOUT = 300.0
 
 
 @dataclass
@@ -52,13 +56,25 @@ def resolve_target(target: str, ip: Optional[str] = None, *, add_to_hosts: bool 
     return None
 
 
-def run_nmap(target: str, options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False) -> NmapResult:
-    """Run Nmap and return a typed result contract."""
+def run_nmap(
+    target: str,
+    options: str = DEFAULT_NMAP_OPTIONS,
+    udp: bool = False,
+    *,
+    timeout: Optional[float] = DEFAULT_NMAP_TIMEOUT,
+) -> NmapResult:
+    """Run Nmap and return a typed result contract.
+
+    The scan is bounded by ``timeout`` seconds (``None`` disables the bound) so
+    a stuck nmap process can never hang the caller indefinitely.
+    """
 
     try:
-        output = subprocess.check_output(["nmap"] + shlex.split(options) + [target], stderr=subprocess.STDOUT).decode(
-            errors="ignore"
-        )
+        output = subprocess.check_output(
+            ["nmap"] + shlex.split(options) + [target],
+            stderr=subprocess.STDOUT,
+            timeout=timeout,
+        ).decode(errors="ignore")
 
         open_tcp: List[int] = []
         for line in output.splitlines():
@@ -67,13 +83,20 @@ def run_nmap(target: str, options: str = DEFAULT_NMAP_OPTIONS, udp: bool = False
 
         open_udp: List[int] = []
         if udp:
-            udp_output = subprocess.check_output(["nmap", "-sU", target], stderr=subprocess.STDOUT).decode(errors="ignore")
+            udp_output = subprocess.check_output(
+                ["nmap", "-sU", target], stderr=subprocess.STDOUT, timeout=timeout
+            ).decode(errors="ignore")
             output += "\n\n" + udp_output
             for line in udp_output.splitlines():
                 if re.match(r"^\d+/udp\s+open", line):
                     open_udp.append(int(line.split("/")[0]))
 
         return NmapResult(ok=True, output=output, open_tcp=open_tcp, open_udp=open_udp)
+    except subprocess.TimeoutExpired as e:
+        logger.warning("nmap timed out target=%s timeout=%s", target, timeout)
+        return NmapResult(
+            ok=False, output="", open_tcp=[], open_udp=[], error=f"nmap timed out after {timeout}s: {e}"
+        )
     except Exception as e:
         return NmapResult(ok=False, output="", open_tcp=[], open_udp=[], error=str(e))
 
@@ -125,7 +148,7 @@ def _resolve_scan_target(
         return target
     if session is not None:
         return session.ip
-    raise RuntimeError(f"{caller} requires either target=... or session=...")
+    raise ScanError(f"{caller} requires either target=... or session=...")
 
 
 def nmap_scan(
@@ -134,6 +157,7 @@ def nmap_scan(
     *,
     target: Optional[str] = None,
     session: Optional[ReconSession] = None,
+    timeout: Optional[float] = DEFAULT_NMAP_TIMEOUT,
 )-> NmapResult:
     """Run an Nmap scan using explicit target/session context."""
 
@@ -141,7 +165,7 @@ def nmap_scan(
 
     logger.info("Running nmap against %s", target)
 
-    nmap_result = run_nmap(target, options=options, udp=udp)
+    nmap_result = run_nmap(target, options=options, udp=udp, timeout=timeout)
 
     if session is not None and target == session.ip:
         session.nmap_output = nmap_result.output
@@ -157,9 +181,10 @@ def nmap_scan_typed(
     *,
     target: Optional[str] = None,
     session: Optional[ReconSession] = None,
+    timeout: Optional[float] = DEFAULT_NMAP_TIMEOUT,
 ) -> NmapResult:
     target = _resolve_scan_target(target=target, session=session, caller="recon.nmap_scan_typed")
-    result = run_nmap(target, options=options, udp=udp)
+    result = run_nmap(target, options=options, udp=udp, timeout=timeout)
     if session is not None and target == session.ip:
         session.nmap_output = result.output
         session.open_tcp = list(result.open_tcp)
@@ -184,7 +209,7 @@ def banner_grab(
         return _banner_grab_ports(host, ports)
 
     if session is None:
-        raise RuntimeError("recon.banner_grab() requires host+ports or session=...")
+        raise ScanError("recon.banner_grab() requires host+ports or session=...")
 
     session_ports = session.open_tcp or []
     return _banner_grab_ports(session.ip, session_ports)
@@ -201,13 +226,14 @@ async def banner_grab_async(
     async def grab_one(port: int) -> tuple[int, Optional[str]]:
         async with sem:
             try:
-                async with asyncio.timeout(2.0):
-                    reader, writer = await asyncio.open_connection(host, port)
+                # asyncio.wait_for works on Python 3.9+ (asyncio.timeout is 3.11+).
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port), timeout=2.0
+                )
                 try:
                     writer.write(b"HEAD / HTTP/1.0\r\n\r\n")
                     await writer.drain()
-                    async with asyncio.timeout(2.0):
-                        data = await reader.read(1024)
+                    data = await asyncio.wait_for(reader.read(1024), timeout=2.0)
                     text = data.decode(errors="ignore").strip().split("\n")[0] if data else "Open (no banner)"
                     return port, text
                 finally:

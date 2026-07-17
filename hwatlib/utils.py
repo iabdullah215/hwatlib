@@ -50,22 +50,48 @@ def authorized_use_banner(*, force: bool = False) -> None:
     print(f"[!] {AUTHORIZED_USE_NOTICE}", file=sys.stderr)
 
 
-def setup_logger(name: str = "hwatlib", level: int = logging.INFO) -> logging.Logger:
+def setup_logger(
+    name: str = "hwatlib",
+    level: int = logging.INFO,
+    *,
+    json_format: Optional[bool] = None,
+) -> logging.Logger:
     """Configure a StreamHandler for visible output. For application/CLI use.
 
     Libraries should not call this at import time; use get_logger() instead.
+
+    Output format:
+    - ``json_format=True`` (or the env ``HWAT_LOG_FORMAT=json``) emits
+      machine-parseable JSON lines carrying the current run id.
+    - Otherwise a human-readable text line is emitted, still annotated with the
+      run id so text logs can be correlated too.
     """
+    from .logging_ext import RunIdFilter, setup_json_logging
+
+    if json_format is None:
+        json_format = os.environ.get("HWAT_LOG_FORMAT", "").strip().lower() == "json"
+
+    if json_format:
+        return setup_json_logging(name, level)
+
     logger = logging.getLogger(name)
     if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
         handler = logging.StreamHandler()
-        formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] %(message)s", "%Y-%m-%d %H:%M:%S")
+        formatter = logging.Formatter(
+            "[%(asctime)s] [%(levelname)s] [run=%(run_id)s] %(message)s", "%Y-%m-%d %H:%M:%S"
+        )
         handler.setFormatter(formatter)
+        handler.addFilter(RunIdFilter())
         logger.addHandler(handler)
         logger.setLevel(level)
     return logger
 
 
 logger = get_logger()
+
+# Default bound for short-lived helper subprocesses so a hung external tool can
+# never block the caller forever. Overridable per call.
+DEFAULT_COMMAND_TIMEOUT = 60.0
 
 
 _IPV4_RE = re.compile(r"^\d+\.\d+\.\d+\.\d+$")
@@ -118,7 +144,9 @@ def resolve_host(target: str) -> Optional[str]:
 
         # Last resort: nslookup, if present (common on pentest boxes).
         try:
-            result = subprocess.check_output(["nslookup", target], stderr=subprocess.STDOUT).decode(errors="ignore")
+            result = subprocess.check_output(
+                ["nslookup", target], stderr=subprocess.STDOUT, timeout=10.0
+            ).decode(errors="ignore")
             match = re.search(r"Address: (\d+\.\d+\.\d+\.\d+)", result)
             if match:
                 return match.group(1)
@@ -146,11 +174,15 @@ def grab_banner(ip: str, port: int, timeout: float = 3.0) -> str:
         return f"Banner grab failed: {e}"
 
 
-def run_command(command: Sequence[str] | str) -> Optional[str]:
+def run_command(
+    command: Sequence[str] | str, *, timeout: Optional[float] = DEFAULT_COMMAND_TIMEOUT
+) -> Optional[str]:
     """Run a system command safely (no shell) and return its output.
 
     This is intentionally *not* a shell helper. If you pass a string, it will
-    be tokenized via shlex and executed without a shell.
+    be tokenized via shlex and executed without a shell. Execution is bounded by
+    ``timeout`` seconds (``None`` disables the bound); a timeout is treated as a
+    failure and returns None.
 
     Use run_command_unsafe_shell() only when you truly need shell features.
     """
@@ -161,12 +193,15 @@ def run_command(command: Sequence[str] | str) -> Optional[str]:
         else:
             argv = command
 
-        result = subprocess.run(argv, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(
+            argv, shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=timeout
+        )
         return result.stdout.strip() if result.stdout else result.stderr.strip()
     except ValueError as e:
         logger.error("Command parsing failed command=%r error=%s", command, e)
         return None
     except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
+        # subprocess.TimeoutExpired is a SubprocessError subclass and lands here.
         logger.error("Command execution failed command=%r error=%s", command, e)
         return None
 
@@ -185,7 +220,9 @@ def run_command_unsafe_shell(command: str) -> Optional[str]:
 def check_sudo() -> bool:
     """Check if the current user has sudo privileges."""
     try:
-        result = subprocess.run(["sudo", "-n", "true"], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        result = subprocess.run(
+            ["sudo", "-n", "true"], shell=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5.0
+        )
         return result.returncode == 0
     except (subprocess.SubprocessError, FileNotFoundError, OSError) as e:
         logger.debug("Sudo check failed error=%s", e)

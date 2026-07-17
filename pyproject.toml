@@ -43,6 +43,12 @@ dev = [
 	"mypy>=1.11,<2",
 	"types-requests>=2.32,<3",
 	"pre-commit>=3,<5",
+	"hypothesis>=6.100,<7",
+]
+# Mutation testing is opt-in and heavier; kept out of the default dev install
+# and CI matrix. Run locally with `make mutants` (see [tool.mutmut]).
+mutation = [
+	"mutmut>=3,<4",
 ]
 security = [
 	"bandit[toml]>=1.7,<2",
@@ -100,6 +106,42 @@ no_implicit_optional = true
 check_untyped_defs = true
 ignore_missing_imports = true
 
+[tool.mutmut]
+# Mutation testing focuses on the scoring/heuristics logic, where a passing
+# test suite can still miss weakened comparisons or thresholds. Run with
+# `make mutants`. Keep this scoped: mutating the whole tree is slow and much
+# of it is thin I/O wrappers not worth mutating.
+source_paths = [
+	"hwatlib/privesc.py",
+	"hwatlib/findings.py",
+]
+# Importing hwatlib runs __init__.py which imports every submodule, so the
+# non-mutated siblings must be copied into the mutation sandbox verbatim or
+# test collection fails. mutmut mutates only source_paths; also_copy brings the
+# rest of the package along unchanged.
+also_copy = [
+	"hwatlib/__init__.py",
+	"hwatlib/async_http.py",
+	"hwatlib/cli.py",
+	"hwatlib/config.py",
+	"hwatlib/diff.py",
+	"hwatlib/dns.py",
+	"hwatlib/exploit.py",
+	"hwatlib/fingerprint.py",
+	"hwatlib/http.py",
+	"hwatlib/models.py",
+	"hwatlib/plugins.py",
+	"hwatlib/postex.py",
+	"hwatlib/py.typed",
+	"hwatlib/recon.py",
+	"hwatlib/report.py",
+	"hwatlib/secrets.py",
+	"hwatlib/session.py",
+	"hwatlib/web.py",
+	"hwatlib/workflows.py",
+	"hwatlib/workflows_async.py",
+]
+
 [tool.coverage.run]
 branch = true
 source = ["hwatlib"]
@@ -107,4 +149,4 @@ source = ["hwatlib"]
 [tool.coverage.report]
 show_missing = true
 skip_covered = true
-fail_under = 50
+fail_under = 80
