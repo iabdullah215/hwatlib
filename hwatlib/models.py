@@ -131,6 +131,7 @@ class TechFingerprint:
     x_powered_by: Optional[str] = None
     cookies: List[str] = field(default_factory=list)
     hints: List[str] = field(default_factory=list)
+    technologies: List[Dict[str, str]] = field(default_factory=list)
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -159,6 +160,30 @@ class CrawlResult:
         d = asdict(self)
         if self.sitemaps is not None:
             d["sitemaps"] = self.sitemaps.to_dict()
+        return d
+
+
+@dataclass
+class DirEntry:
+    url: str
+    status: int
+    length: int = 0
+    redirect: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class DirBruteResult:
+    base: str
+    tested: int = 0
+    found: List[DirEntry] = field(default_factory=list)
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        d["found"] = [e.to_dict() for e in self.found]
         return d
 
 

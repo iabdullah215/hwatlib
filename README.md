@@ -69,12 +69,41 @@ remote.run_shell("bash")
 
 ```python3
 from hwatlib import web
+from hwatlib.http import HttpClient, HttpOptions
 
 # Fetchers and enumeration
 web.fetch_headers("http://example.com")
 web.fetch_forms("http://example.com/login")
 web.fetch_js("http://example.com")
 
+# Directory/content brute-forcing (pass a rate-limited client)
+client = HttpClient(options=HttpOptions(rate_limit_per_sec=5))
+res = web.dir_bruteforce("http://example.com", "wordlist.txt",
+                         client=client, extensions=["php", ".bak"])
+for hit in res.found:
+    print(hit.status, hit.url)
+
+# Passive tech fingerprinting (Wappalyzer-style rules)
+tech = web.fingerprint_tech("http://example.com")
+print(tech.hints)          # ['nginx', 'php', 'wordpress', ...]
+print(tech.technologies)   # [{'name': 'wordpress', 'category': 'cms'}, ...]
+```
+
+### Authenticated scans
+
+Build cookie/token flows on a session, then hand the authenticated client to any
+web function:
+
+```python3
+from hwatlib import web
+from hwatlib.session import new_session
+
+s = new_session("https://app.example.com")
+s.set_bearer_token("eyJhbGciOi...")            # or s.set_basic_auth("u", "p")
+# or a form login whose cookies persist on the client:
+s.login_form("https://app.example.com/login", {"user": "admin", "pass": "s3cret"})
+
+result = web.scan("https://app.example.com", client=s.ensure_http())
 ```
 
 ## CLI

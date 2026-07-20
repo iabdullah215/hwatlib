@@ -11,10 +11,13 @@ import defusedxml.ElementTree as ET
 import requests
 from bs4 import BeautifulSoup
 
+from . import techrules
 from .async_http import AsyncHttpClient
 from .http import HttpClient
 from .models import (
     CrawlResult,
+    DirBruteResult,
+    DirEntry,
     SitemapDiscovery,
     TechFingerprint,
     WebFetchResult,
@@ -591,10 +594,17 @@ def fingerprint_tech(url: str, *, client: Optional[HttpClient] = None, timeout: 
     powered_by = headers.get("x-powered-by")
     set_cookie = headers.get("set-cookie", "")
 
-    hints = _tech_hints(headers=headers, body=body)
     cookies = _cookie_names(set_cookie)
+    matches = _detect_tech(headers, cookies, body)
 
-    return TechFingerprint(ok=True, server=server, x_powered_by=powered_by, cookies=cookies, hints=hints)
+    return TechFingerprint(
+        ok=True,
+        server=server,
+        x_powered_by=powered_by,
+        cookies=cookies,
+        hints=[m.name for m in matches],
+        technologies=[m.to_dict() for m in matches],
+    )
 
 
 def fingerprint_tech_dict(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5) -> Dict[str, Any]:
@@ -622,10 +632,17 @@ async def fingerprint_tech_async(url: str, *, client: Optional[AsyncHttpClient] 
     powered_by = headers.get("x-powered-by")
     set_cookie = headers.get("set-cookie", "")
 
-    hints = _tech_hints(headers=headers, body=body)
     cookies = _cookie_names(set_cookie)
+    matches = _detect_tech(headers, cookies, body)
 
-    return TechFingerprint(ok=True, server=server, x_powered_by=powered_by, cookies=cookies, hints=hints)
+    return TechFingerprint(
+        ok=True,
+        server=server,
+        x_powered_by=powered_by,
+        cookies=cookies,
+        hints=[m.name for m in matches],
+        technologies=[m.to_dict() for m in matches],
+    )
 
 
 async def fingerprint_tech_async_dict(url: str, *, client: Optional[AsyncHttpClient] = None) -> Dict[str, Any]:
@@ -671,51 +688,147 @@ def _cookie_names(set_cookie: str) -> List[str]:
     return sorted(set(out))
 
 
-def _tech_hints(*, headers: Dict[str, str], body: str) -> List[str]:
-    hints: List[str] = []
-    if "wordpress" in body or "wp-content" in body:
-        hints.append("wordpress")
-    if "drupal" in body and ("drupal.settings" in body or "sites/all" in body):
-        hints.append("drupal")
-    if "csrfmiddlewaretoken" in body:
-        hints.append("django")
-    if "laravel" in body or "x-laravel" in body:
-        hints.append("laravel")
+def _detect_tech(headers: Dict[str, str], cookies: List[str], body: str) -> List[techrules.TechMatch]:
+    """Run the Wappalyzer-style rule engine over a response."""
+    return techrules.detect(headers, cookies, body)
 
-    hints.extend(_tech_from_headers(headers))
-    return sorted(set(hints))
+
+def _tech_hints(*, headers: Dict[str, str], body: str) -> List[str]:
+    """Return detected technology names (backwards-compatible hint list)."""
+    return [m.name for m in _detect_tech(headers, [], body)]
 
 
 def _tech_from_headers(headers: Dict[str, str]) -> List[str]:
-    server = (headers.get("server") or "").lower()
-    powered_by = (headers.get("x-powered-by") or "").lower()
-    out: List[str] = []
+    """Technology names inferred from response headers alone."""
+    return [m.name for m in _detect_tech(headers, [], "")]
 
-    # Common servers
-    if "nginx" in server:
-        out.append("nginx")
-    if "apache" in server or "httpd" in server:
-        out.append("apache")
-    if "caddy" in server:
-        out.append("caddy")
-    if "cloudflare" in server:
-        out.append("cloudflare")
-    if "gunicorn" in server:
-        out.append("gunicorn")
-    if "uvicorn" in server:
-        out.append("uvicorn")
 
-    # Framework hints
-    if "express" in powered_by:
-        out.append("express")
-    if "php" in powered_by:
-        out.append("php")
-    if "asp.net" in powered_by:
-        out.append("asp.net")
-    if "django" in powered_by:
-        out.append("django")
+# ----------------
+# Directory / content brute-forcing
+# ----------------
 
-    return out
+# Status codes that usually indicate a resource worth reporting.
+_DIR_INTERESTING = frozenset({200, 201, 202, 203, 204, 301, 302, 307, 308, 401, 403, 405, 500})
+
+
+def _iter_wordlist(wordlist: Any):
+    """Yield stripped words from a file path (str/Path) or an iterable of words."""
+    if isinstance(wordlist, (str, Path)):
+        with open(wordlist, "r", encoding="utf-8", errors="ignore") as f:
+            for line in f:
+                yield line.strip()
+    else:
+        for word in wordlist:
+            yield str(word).strip()
+
+
+def _candidate_paths(word: str, extensions: Optional[List[str]]) -> List[str]:
+    word = word.strip().lstrip("/")
+    if not word or word.startswith("#"):
+        return []
+    paths = [word]
+    for ext in extensions or []:
+        dotted = ext if ext.startswith(".") else "." + ext
+        paths.append(word + dotted)
+    return paths
+
+
+def dir_bruteforce(
+    base_url: str,
+    wordlist: Any,
+    *,
+    client: Optional[HttpClient] = None,
+    timeout: float = 5,
+    extensions: Optional[List[str]] = None,
+    status_include: Optional[List[int]] = None,
+) -> DirBruteResult:
+    """Directory/content brute-force over a wordlist.
+
+    ``wordlist`` may be a file path (str/Path) or an iterable of words. Pass a
+    configured ``HttpClient`` (e.g. ``HttpClient(options=HttpOptions(
+    rate_limit_per_sec=5))``) to apply rate limiting and retries. Redirects are
+    not followed so 30x locations are reported. Returns a typed result.
+    """
+    base = _normalize_target(base_url).rstrip("/") + "/"
+    interesting = frozenset(status_include) if status_include else _DIR_INTERESTING
+    http = client if client is not None else HttpClient()
+
+    found: List[DirEntry] = []
+    tested = 0
+    try:
+        for word in _iter_wordlist(wordlist):
+            for path in _candidate_paths(word, extensions):
+                url = urllib.parse.urljoin(base, path)
+                tested += 1
+                try:
+                    r = http.get(url, timeout=timeout, allow_redirects=False)
+                except requests.RequestException as e:
+                    logger.debug("Dir brute request failed url=%s error=%s", url, e)
+                    continue
+                if r.status_code in interesting:
+                    found.append(
+                        DirEntry(
+                            url=url,
+                            status=r.status_code,
+                            length=len(r.text or ""),
+                            redirect=r.headers.get("Location"),
+                        )
+                    )
+        return DirBruteResult(base=base, tested=tested, found=found)
+    except OSError as e:
+        logger.warning("Dir brute wordlist read failed error=%s", e)
+        return DirBruteResult(base=base, tested=tested, found=found, error=str(e))
+
+
+async def dir_bruteforce_async(
+    base_url: str,
+    wordlist: Any,
+    *,
+    client: Optional[AsyncHttpClient] = None,
+    extensions: Optional[List[str]] = None,
+    status_include: Optional[List[int]] = None,
+    max_concurrency: int = 20,
+) -> DirBruteResult:
+    """Async directory/content brute-force (concurrency via AsyncHttpClient)."""
+    base = _normalize_target(base_url).rstrip("/") + "/"
+    if client is None:
+        async with AsyncHttpClient() as c:
+            return await dir_bruteforce_async(
+                base, wordlist, client=c, extensions=extensions,
+                status_include=status_include, max_concurrency=max_concurrency,
+            )
+
+    interesting = frozenset(status_include) if status_include else _DIR_INTERESTING
+    try:
+        candidates = [
+            urllib.parse.urljoin(base, path)
+            for word in _iter_wordlist(wordlist)
+            for path in _candidate_paths(word, extensions)
+        ]
+    except OSError as e:
+        return DirBruteResult(base=base, tested=0, found=[], error=str(e))
+
+    sem = asyncio.Semaphore(max(1, int(max_concurrency or 1)))
+
+    async def probe(url: str) -> Optional[DirEntry]:
+        async with sem:
+            try:
+                r = await client.get(url)
+            except Exception as e:
+                logger.debug("Async dir brute request failed url=%s error=%s", url, e)
+                return None
+            if r.status in interesting:
+                return DirEntry(
+                    url=url,
+                    status=r.status,
+                    length=len(r.text or ""),
+                    redirect=r.headers.get("location"),
+                )
+            return None
+
+    results = await asyncio.gather(*(probe(u) for u in candidates))
+    found = [e for e in results if e is not None]
+    return DirBruteResult(base=base, tested=len(candidates), found=found)
 
 
 def main(argv: Optional[List[str]] = None) -> int:
