@@ -25,6 +25,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   subject/issuer, SANs, validity window and days-until-expiry, negotiated
   protocol/cipher, and weak-protocol/weak-cipher/self-signed/expired flags.
   Works on invalid certs (verification is disabled for inspection).
+- **Directory/content brute-forcing** (`web.dir_bruteforce` / `dir_bruteforce_async`):
+  wordlist-driven, with extension expansion and status filtering; uses the shared
+  `HttpClient` (rate limiting/retries) or `AsyncHttpClient` concurrency. Typed
+  `DirBruteResult`/`DirEntry`.
+- **Wappalyzer-style tech fingerprinting** (`hwatlib.techrules`): a data-driven
+  rule engine over headers/cookies/body/meta with `implies`, wired into
+  `web.fingerprint_tech` (now also returns a `technologies` list of
+  name/category).
+- **Auth/session handling** on `HwatSession`: `set_headers`, `set_cookies`,
+  `set_bearer_token`, `set_basic_auth`, and `login_form` (cookies persist on the
+  shared client), so `web.scan(client=session.ensure_http())` runs authenticated.
 - **Typed exception hierarchy** (`hwatlib.exceptions`): all library errors now
   derive from `HwatlibError`, with `ConfigError`, `PluginError`,
   `DependencyError`, `ScanError`, and `NetworkError` → (`TargetUnreachable`,
