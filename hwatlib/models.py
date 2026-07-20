@@ -34,6 +34,17 @@ class NmapResult:
 
 
 @dataclass
+class PortScanResult:
+    host: str
+    open_ports: List[int] = field(default_factory=list)
+    scanned: int = 0
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class ReconResult:
     target: str
     ok: bool = True
@@ -48,6 +59,31 @@ class ReconResult:
         # normalize int keys for JSON
         d["banners"] = {str(k): v for k, v in (self.banners or {}).items()}
         return d
+
+
+@dataclass
+class TlsCertInfo:
+    ok: bool
+    host: str
+    port: int
+    subject: Optional[str] = None
+    issuer: Optional[str] = None
+    sans: List[str] = field(default_factory=list)
+    not_before: Optional[str] = None
+    not_after: Optional[str] = None
+    days_until_expiry: Optional[int] = None
+    expired: bool = False
+    self_signed: bool = False
+    protocol: Optional[str] = None
+    cipher: Optional[str] = None
+    cipher_bits: Optional[int] = None
+    weak_protocol: bool = False
+    weak_cipher: bool = False
+    supports_weak_ciphers: bool = False
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
 
 # -----------------

