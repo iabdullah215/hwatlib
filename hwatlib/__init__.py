@@ -18,6 +18,7 @@ from . import (
     dns,
     exceptions,
     exploit,
+    export,
     findings,
     fingerprint,
     http,
@@ -69,6 +70,7 @@ __all__ = [
     "workflows",
     "workflows_async",
     "exceptions",
+    "export",
     "logging_ext",
     # Exception hierarchy (re-exported for convenience)
     "HwatlibError",

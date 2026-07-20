@@ -163,11 +163,37 @@ class CrawlResult:
 
 
 @dataclass
+class OpenApiEndpoint:
+    path: str
+    methods: List[str] = field(default_factory=list)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
+class OpenApiDiscovery:
+    ok: bool = False
+    spec_url: Optional[str] = None
+    spec_type: Optional[str] = None  # "openapi" | "swagger"
+    version: Optional[str] = None
+    title: Optional[str] = None
+    endpoint_count: int = 0
+    endpoints: List[OpenApiEndpoint] = field(default_factory=list)
+    checked: List[str] = field(default_factory=list)
+    error: Optional[str] = None
+
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class WebResult:
     ok: bool = True
     fetch: Optional[WebFetchResult] = None
     tech: Optional[TechFingerprint] = None
     sitemap: Optional[CrawlResult] = None
+    openapi: Optional[OpenApiDiscovery] = None
     error: Optional[str] = None
 
     def to_dict(self) -> Dict[str, Any]:
@@ -179,6 +205,7 @@ class WebResult:
             "js": [] if self.fetch is None else list(self.fetch.js),
             "tech": None if self.tech is None else self.tech.to_dict(),
             "sitemap": None if self.sitemap is None else self.sitemap.to_dict(),
+            "openapi": None if self.openapi is None else self.openapi.to_dict(),
         }
 
 

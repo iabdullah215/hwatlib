@@ -75,7 +75,18 @@ web.fetch_headers("http://example.com")
 web.fetch_forms("http://example.com/login")
 web.fetch_js("http://example.com")
 
+# OpenAPI/Swagger discovery: probes common spec locations, detects the
+# version/title, and enumerates endpoints (path + HTTP methods).
+api = web.discover_openapi("http://api.example.com")
+if api.ok:
+    print(api.spec_type, api.version, api.spec_url)
+    for ep in api.endpoints:
+        print(ep.path, ep.methods)
 ```
+
+OpenAPI discovery is also run automatically as part of `web.scan(...)` and the
+unified `hwat report`, appearing under `web.openapi` in the report. JSON specs
+are parsed out of the box; YAML specs additionally require `pyyaml`.
 
 ## CLI
 
@@ -113,6 +124,29 @@ Sitemap export:
 ```bash
 hwat report https://example.com --sitemap-json sitemap.json --sitemap-csv sitemap.csv
 ```
+
+Machine-readable findings export (composable into other pipelines):
+
+```bash
+# SARIF 2.1.0 (upload to GitHub code scanning) and JSON Lines
+hwat report example.com --out-sarif findings.sarif --out-jsonl findings.jsonl
+```
+
+Or from Python:
+
+```python
+from hwatlib import export, workflows
+
+report = workflows.build_report(target="example.com")
+export.write_sarif(report, "findings.sarif")   # SARIF 2.1.0
+export.write_jsonl(report, "findings.jsonl")   # one finding per line
+sarif = export.to_sarif(report)                # or get the dict/str directly
+```
+
+Findings map to SARIF severity levels (critical/high → `error`, medium →
+`warning`, low/info → `note`) with a GitHub `security-severity` score, rules
+deduplicated per finding type, stable `partialFingerprints`, and the report's
+run id as `automationDetails.id`.
 
 Plugins:
 

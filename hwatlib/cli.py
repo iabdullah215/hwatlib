@@ -59,6 +59,8 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_report.add_argument("--out-json", default=None, help="Write full report JSON to file")
     p_report.add_argument("--out-md", default=None, help="Write full report Markdown to file")
+    p_report.add_argument("--out-sarif", default=None, help="Write findings as SARIF 2.1.0 to file")
+    p_report.add_argument("--out-jsonl", default=None, help="Write findings as JSON Lines to file")
     p_report.add_argument("--sitemap-json", default=None, help="Write sitemap links JSON to file")
     p_report.add_argument("--sitemap-csv", default=None, help="Write sitemap links CSV to file")
 
@@ -192,10 +194,19 @@ def _emit_outputs(report: HwatReport, args) -> None:
         Path(args.out_json).write_text(report.to_json(indent=2), encoding="utf-8")
     if args.out_md:
         Path(args.out_md).write_text(report.to_markdown(), encoding="utf-8")
+    if args.out_sarif:
+        from .export import write_sarif
+
+        write_sarif(report, args.out_sarif)
+    if args.out_jsonl:
+        from .export import write_jsonl
+
+        write_jsonl(report, args.out_jsonl)
 
     _emit_sitemap_outputs(report, args)
 
-    # Default output to stdout if no files provided
+    # Default output to stdout if no report files were requested. Findings-only
+    # exports (SARIF/JSONL) do not suppress the default JSON report on stdout.
     if not any([args.out_json, args.out_md]):
         print(report.to_json(indent=2))
 

@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Machine-readable findings export** (`hwatlib.export`): render findings as
+  **SARIF 2.1.0** (GitHub code scanning) or **JSON Lines**, from a scored report
+  or any list of findings. New `hwat report --out-sarif` / `--out-jsonl` flags.
+- **OpenAPI/Swagger discovery** (`web.discover_openapi`): probes common spec
+  locations, detects the version/title, and enumerates endpoints (path + HTTP
+  methods). Runs automatically in `web.scan()` and appears under `web.openapi`
+  in reports. JSON parsed out of the box; YAML needs `pyyaml`.
 - **Typed exception hierarchy** (`hwatlib.exceptions`): all library errors now
   derive from `HwatlibError`, with `ConfigError`, `PluginError`,
   `DependencyError`, `ScanError`, and `NetworkError` → (`TargetUnreachable`,
