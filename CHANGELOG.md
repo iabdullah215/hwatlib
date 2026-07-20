@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Async TCP connect port scanner** (`recon.scan_ports` / `recon.async_scan_ports`):
+  a dependency-free, concurrent alternative to nmap, with `recon.parse_ports`
+  for `"1-1024,3306"`-style specs and a typed `PortScanResult`.
+- **Subdomain enumeration** in the `dns` module: passive discovery via
+  Certificate Transparency logs (`dns.discover_subdomains_passive`, crt.sh) and
+  `dns.enumerate_subdomains` combining passive + active wordlist brute.
+- **TLS/certificate inspection** (`hwatlib.tls.inspect_tls`): certificate
+  subject/issuer, SANs, validity window and days-until-expiry, negotiated
+  protocol/cipher, and weak-protocol/weak-cipher/self-signed/expired flags.
+  Works on invalid certs (verification is disabled for inspection).
 - **Typed exception hierarchy** (`hwatlib.exceptions`): all library errors now
   derive from `HwatlibError`, with `ConfigError`, `PluginError`,
   `DependencyError`, `ScanError`, and `NetworkError` → (`TargetUnreachable`,

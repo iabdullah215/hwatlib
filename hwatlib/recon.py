@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 from .exceptions import ScanError
-from .models import NmapResult
+from .models import NmapResult, PortScanResult
 from .utils import authorized_use_banner, get_logger, resolve_host, setup_logger
 
 logger = get_logger()
@@ -17,6 +17,106 @@ DEFAULT_NMAP_OPTIONS = "-sV -sC -A"
 # Nmap can legitimately run for a while, but must never hang forever; callers
 # can override per scan. Kept generous so normal scans are not cut short.
 DEFAULT_NMAP_TIMEOUT = 300.0
+
+# Frequently-exposed TCP services, used by the built-in connect scanner when the
+# caller does not specify ports. This is a dependency-free fallback for nmap.
+COMMON_PORTS = [
+    21, 22, 23, 25, 53, 80, 110, 111, 135, 139, 143, 161, 389, 443, 445, 465,
+    587, 636, 993, 995, 1433, 1723, 2049, 2375, 3000, 3306, 3389, 5432, 5601,
+    5900, 5985, 6379, 8000, 8080, 8443, 8888, 9200, 11211, 27017,
+]
+
+
+def parse_ports(spec: str) -> List[int]:
+    """Parse a port spec like ``"22,80,443,8000-8010"`` into a sorted list.
+
+    Invalid tokens are skipped; out-of-range values (not 1..65535) are dropped.
+    """
+    ports: set[int] = set()
+    for token in str(spec or "").split(","):
+        token = token.strip()
+        if not token:
+            continue
+        if "-" in token:
+            lo_s, _, hi_s = token.partition("-")
+            try:
+                lo, hi = int(lo_s), int(hi_s)
+            except ValueError:
+                continue
+            if lo > hi:
+                lo, hi = hi, lo
+            for p in range(lo, hi + 1):
+                if 1 <= p <= 65535:
+                    ports.add(p)
+        else:
+            try:
+                p = int(token)
+            except ValueError:
+                continue
+            if 1 <= p <= 65535:
+                ports.add(p)
+    return sorted(ports)
+
+
+async def async_scan_ports(
+    host: str,
+    ports: Optional[List[int]] = None,
+    *,
+    timeout: float = 1.0,
+    max_concurrency: int = 200,
+) -> List[int]:
+    """Async TCP connect scan. Returns the sorted list of open ports.
+
+    A dependency-free alternative to nmap: it opens a TCP connection to each
+    port (bounded by ``max_concurrency``) and treats a successful connect as
+    open. Read-only; it never sends payloads.
+    """
+    scan_ports_list = list(ports) if ports is not None else list(COMMON_PORTS)
+    sem = asyncio.Semaphore(max(1, int(max_concurrency or 1)))
+
+    async def check(port: int) -> Optional[int]:
+        async with sem:
+            writer = None
+            try:
+                _reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection(host, port), timeout=timeout
+                )
+                return port
+            except Exception:
+                return None
+            finally:
+                if writer is not None:
+                    writer.close()
+                    try:
+                        await writer.wait_closed()
+                    except Exception:
+                        # Best effort: connection is being torn down anyway.
+                        pass
+
+    results = await asyncio.gather(*(check(p) for p in scan_ports_list))
+    return sorted(p for p in results if p is not None)
+
+
+def scan_ports(
+    host: str,
+    ports: Optional[List[int]] = None,
+    *,
+    timeout: float = 1.0,
+    max_concurrency: int = 200,
+) -> PortScanResult:
+    """Synchronous wrapper around :func:`async_scan_ports`.
+
+    Returns a typed :class:`PortScanResult` (host, open_ports, scanned).
+    """
+    scan_list = list(ports) if ports is not None else list(COMMON_PORTS)
+    try:
+        open_ports = asyncio.run(
+            async_scan_ports(host, scan_list, timeout=timeout, max_concurrency=max_concurrency)
+        )
+        return PortScanResult(host=host, open_ports=open_ports, scanned=len(scan_list))
+    except Exception as e:
+        logger.exception("Port scan failed host=%s: %s", host, e)
+        return PortScanResult(host=host, open_ports=[], scanned=len(scan_list), error=str(e))
 
 
 @dataclass

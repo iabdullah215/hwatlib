@@ -4,10 +4,15 @@ import asyncio
 import socket
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
 
+import requests
+
 from .models import DnsResultTyped, ZoneTransferResult
 from .utils import get_logger, resolve_host
 
 logger = get_logger()
+
+# Certificate Transparency log aggregator used for passive subdomain discovery.
+_CRTSH_URL = "https://crt.sh/"
 
 if TYPE_CHECKING:  # pragma: no cover
     pass  # type: ignore
@@ -41,6 +46,77 @@ def discover_subdomains(domain: str, words: Iterable[str], *, limit: int = 500) 
             found[fqdn] = ip
             count += 1
     return found
+
+
+def _parse_crtsh_names(entries: Any, domain: str) -> List[str]:
+    """Extract in-scope subdomain names from a crt.sh JSON response."""
+    domain = domain.lower().lstrip(".")
+    names: set[str] = set()
+    if not isinstance(entries, list):
+        return []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        value = entry.get("name_value") or entry.get("common_name") or ""
+        for line in str(value).splitlines():
+            name = line.strip().lstrip("*.").lower().rstrip(".")
+            if not name or "@" in name:
+                continue
+            if name == domain or name.endswith("." + domain):
+                names.add(name)
+    return sorted(names)
+
+
+def discover_subdomains_passive(
+    domain: str,
+    *,
+    timeout: float = 15.0,
+    session: Optional[requests.Session] = None,
+) -> List[str]:
+    """Passive subdomain discovery via Certificate Transparency logs (crt.sh).
+
+    Read-only and target-agnostic: it queries the public crt.sh aggregator, not
+    the target itself, and returns the discovered names **without** resolving
+    them. Returns an empty list on any network/parse error.
+    """
+    getter = session.get if session is not None else requests.get
+    try:
+        resp = getter(_CRTSH_URL, params={"q": f"%.{domain}", "output": "json"}, timeout=timeout)
+        data = resp.json()
+    except (requests.RequestException, ValueError) as e:
+        logger.debug("crt.sh passive discovery failed domain=%s error=%s", domain, e)
+        return []
+    return _parse_crtsh_names(data, domain)
+
+
+def enumerate_subdomains(
+    domain: str,
+    *,
+    words: Optional[Iterable[str]] = None,
+    passive: bool = True,
+    resolve: bool = True,
+    limit: int = 500,
+    timeout: float = 15.0,
+    session: Optional[requests.Session] = None,
+) -> Dict[str, Optional[str]]:
+    """Combine passive (CT logs) and active (wordlist brute) subdomain discovery.
+
+    Returns a mapping of ``fqdn -> ip`` (or ``None`` when ``resolve`` is False or
+    a passively-discovered name does not resolve).
+    """
+    results: Dict[str, Optional[str]] = {}
+
+    if words:
+        for fqdn, ip in discover_subdomains(domain, words, limit=limit).items():
+            results[fqdn] = ip
+
+    if passive:
+        for name in discover_subdomains_passive(domain, timeout=timeout, session=session):
+            if name in results:
+                continue
+            results[name] = resolve_host(name) if resolve else None
+
+    return results
 
 
 async def discover_subdomains_async(
