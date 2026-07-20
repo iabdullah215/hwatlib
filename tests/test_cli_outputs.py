@@ -59,6 +59,41 @@ def test_cli_report_writes_json_md_and_sitemap_files(monkeypatch, tmp_path, caps
     assert out == ""
 
 
+def test_cli_report_writes_sarif_and_jsonl(monkeypatch, tmp_path, capsys):
+    import hwatlib.cli as cli
+
+    def fake_build_report(**kwargs):
+        r = new_report(target=kwargs["target"])
+        r.metadata["run_id"] = "report-cli"
+        r.metadata["findings"] = [
+            {"category": "secrets", "title": "Secret found", "severity": "high",
+             "evidence": {"url": "http://example.com/x"}, "recommendation": "Rotate"},
+        ]
+        return r
+
+    monkeypatch.setattr(cli, "build_report", fake_build_report)
+
+    out_sarif = tmp_path / "findings.sarif"
+    out_jsonl = tmp_path / "findings.jsonl"
+
+    code = cli.main(
+        ["report", "example.com", "--out-sarif", str(out_sarif), "--out-jsonl", str(out_jsonl)]
+    )
+
+    assert code == 0
+    sarif = json.loads(out_sarif.read_text(encoding="utf-8"))
+    assert sarif["version"] == "2.1.0"
+    assert sarif["runs"][0]["automationDetails"]["id"] == "report-cli"
+    assert len(sarif["runs"][0]["results"]) == 1
+
+    jsonl_lines = out_jsonl.read_text(encoding="utf-8").splitlines()
+    assert len(jsonl_lines) == 1
+    assert json.loads(jsonl_lines[0])["category"] == "secrets"
+
+    # Findings-only exports still print the JSON report to stdout.
+    assert capsys.readouterr().out.strip() != ""
+
+
 def test_cli_report_prints_json_when_no_output_files(monkeypatch, capsys):
     import hwatlib.cli as cli
 

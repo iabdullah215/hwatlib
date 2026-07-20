@@ -15,6 +15,8 @@ from .async_http import AsyncHttpClient
 from .http import HttpClient
 from .models import (
     CrawlResult,
+    OpenApiDiscovery,
+    OpenApiEndpoint,
     SitemapDiscovery,
     TechFingerprint,
     WebFetchResult,
@@ -573,6 +575,145 @@ def _parse_sitemap_xml_locs(text: str) -> List[str]:
         return []
 
 
+# ----------------
+# OpenAPI / Swagger discovery
+# ----------------
+
+# Common locations where an OpenAPI/Swagger document is exposed. Probed in order;
+# discovery stops at the first valid spec.
+_OPENAPI_CANDIDATE_PATHS = (
+    "/openapi.json",
+    "/openapi.yaml",
+    "/openapi.yml",
+    "/swagger.json",
+    "/swagger/v1/swagger.json",
+    "/v2/api-docs",
+    "/v3/api-docs",
+    "/api-docs",
+    "/api/openapi.json",
+    "/api/swagger.json",
+    "/docs/openapi.json",
+)
+
+_HTTP_METHODS = {"get", "put", "post", "delete", "options", "head", "patch", "trace"}
+
+
+def _parse_openapi_document(text: str) -> Optional[Dict[str, Any]]:
+    """Parse an OpenAPI document from JSON, falling back to YAML if available."""
+    try:
+        obj = json.loads(text)
+        return obj if isinstance(obj, dict) else None
+    except (json.JSONDecodeError, TypeError):
+        pass
+    try:
+        import yaml  # type: ignore[import-untyped]  # optional; YAML-served specs
+
+        obj = yaml.safe_load(text)
+        return obj if isinstance(obj, dict) else None
+    except Exception as e:
+        logger.debug("OpenAPI document parse failed error=%s", e)
+        return None
+
+
+def _extract_openapi_endpoints(paths: Any) -> List[OpenApiEndpoint]:
+    endpoints: List[OpenApiEndpoint] = []
+    if not isinstance(paths, dict):
+        return endpoints
+    for path, item in paths.items():
+        if not isinstance(item, dict):
+            continue
+        methods = sorted(
+            m.upper() for m in item.keys() if isinstance(m, str) and m.lower() in _HTTP_METHODS
+        )
+        if methods:
+            endpoints.append(OpenApiEndpoint(path=str(path), methods=methods))
+    return endpoints
+
+
+def _build_openapi_discovery(
+    spec_url: str, spec: Dict[str, Any], checked: List[str]
+) -> Optional[OpenApiDiscovery]:
+    if isinstance(spec.get("openapi"), str):
+        spec_type, version = "openapi", spec["openapi"]
+    elif isinstance(spec.get("swagger"), str):
+        spec_type, version = "swagger", spec["swagger"]
+    else:
+        return None  # present and parseable, but not an OpenAPI/Swagger doc
+
+    info_raw = spec.get("info")
+    info = info_raw if isinstance(info_raw, dict) else {}
+    title_raw = info.get("title")
+    title = title_raw if isinstance(title_raw, str) else None
+    endpoints = _extract_openapi_endpoints(spec.get("paths"))
+
+    return OpenApiDiscovery(
+        ok=True,
+        spec_url=spec_url,
+        spec_type=spec_type,
+        version=version,
+        title=title,
+        endpoint_count=len(endpoints),
+        endpoints=endpoints,
+        checked=list(checked),
+    )
+
+
+def discover_openapi(
+    url: str, *, client: Optional[HttpClient] = None, timeout: float = 5
+) -> OpenApiDiscovery:
+    """Detect and parse an OpenAPI/Swagger spec, enumerating its endpoints.
+
+    Probes common spec locations (read-only GETs) and returns the first valid
+    document found, including the declared version, title, and the list of
+    ``path`` + HTTP methods it exposes.
+    """
+    base = _normalize_target(url)
+    checked: List[str] = []
+    for candidate in _OPENAPI_CANDIDATE_PATHS:
+        spec_url = urllib.parse.urljoin(base, candidate)
+        checked.append(spec_url)
+        text = _fetch_text(spec_url, client=client, timeout=timeout)
+        if not text:
+            continue
+        spec = _parse_openapi_document(text)
+        if spec is None:
+            continue
+        discovery = _build_openapi_discovery(spec_url, spec, checked)
+        if discovery is not None:
+            return discovery
+    return OpenApiDiscovery(ok=False, checked=checked, error="No OpenAPI/Swagger spec found")
+
+
+def discover_openapi_dict(
+    url: str, *, client: Optional[HttpClient] = None, timeout: float = 5
+) -> Dict[str, Any]:
+    return discover_openapi(url, client=client, timeout=timeout).to_dict()
+
+
+async def discover_openapi_async(
+    url: str, *, client: Optional[AsyncHttpClient] = None
+) -> OpenApiDiscovery:
+    base = _normalize_target(url)
+    if client is None:
+        async with AsyncHttpClient() as c:
+            return await discover_openapi_async(base, client=c)
+
+    checked: List[str] = []
+    for candidate in _OPENAPI_CANDIDATE_PATHS:
+        spec_url = urllib.parse.urljoin(base, candidate)
+        checked.append(spec_url)
+        text = await _fetch_text_async(spec_url, client=client)
+        if not text:
+            continue
+        spec = _parse_openapi_document(text)
+        if spec is None:
+            continue
+        discovery = _build_openapi_discovery(spec_url, spec, checked)
+        if discovery is not None:
+            return discovery
+    return OpenApiDiscovery(ok=False, checked=checked, error="No OpenAPI/Swagger spec found")
+
+
 def fingerprint_tech(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5) -> TechFingerprint:
     """Very lightweight tech hints from headers/body markers."""
 
@@ -637,7 +778,8 @@ def scan(url: str, *, client: Optional[HttpClient] = None, timeout: float = 5, d
         fetch = fetch_all(url, timeout=timeout, client=client)
         tech = fingerprint_tech(url, timeout=timeout, client=client)
         sitemap = crawl(url, depth=depth, client=client, timeout=timeout)
-        return WebResult(ok=True, fetch=fetch, tech=tech, sitemap=sitemap)
+        openapi = discover_openapi(url, client=client, timeout=timeout)
+        return WebResult(ok=True, fetch=fetch, tech=tech, sitemap=sitemap, openapi=openapi)
     except Exception as e:
         logger.exception("Web scan failed url=%s depth=%s: %s", url, depth, e)
         return WebResult(ok=False, error=str(e))
@@ -649,12 +791,13 @@ async def scan_async(url: str, *, client: Optional[AsyncHttpClient] = None, dept
         async with AsyncHttpClient() as c:
             return await scan_async(base, client=c, depth=depth)
     try:
-        fetch, tech, sitemap = await asyncio.gather(
+        fetch, tech, sitemap, openapi = await asyncio.gather(
             fetch_all_async(base, client=client),
             fingerprint_tech_async(base, client=client),
             crawl_async(base, depth=depth, client=client),
+            discover_openapi_async(base, client=client),
         )
-        return WebResult(ok=True, fetch=fetch, tech=tech, sitemap=sitemap)
+        return WebResult(ok=True, fetch=fetch, tech=tech, sitemap=sitemap, openapi=openapi)
     except Exception as e:
         logger.exception("Async web scan failed url=%s depth=%s: %s", base, depth, e)
         return WebResult(ok=False, error=str(e))
