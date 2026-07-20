@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **HTML report output** (`HwatReport.to_html` / `hwat report --out-html`): a
+  self-contained, styled report with findings grouped by severity (critical→info)
+  and a risk badge; untrusted content is HTML-escaped.
+- **Run-over-run diffing as a first-class workflow** (`hwat report --compare
+  prev.json`): diffs the current run against a previous report and attaches the
+  result under `metadata.diff` (risk delta, findings added/removed, tech/ports
+  changes), rendered in the Markdown and HTML reports.
 - **Machine-readable findings export** (`hwatlib.export`): render findings as
   **SARIF 2.1.0** (GitHub code scanning) or **JSON Lines**, from a scored report
   or any list of findings. New `hwat report --out-sarif` / `--out-jsonl` flags.

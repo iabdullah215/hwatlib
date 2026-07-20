@@ -59,8 +59,15 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_report.add_argument("--out-json", default=None, help="Write full report JSON to file")
     p_report.add_argument("--out-md", default=None, help="Write full report Markdown to file")
+    p_report.add_argument("--out-html", default=None, help="Write an HTML report (findings grouped by severity)")
     p_report.add_argument("--out-sarif", default=None, help="Write findings as SARIF 2.1.0 to file")
     p_report.add_argument("--out-jsonl", default=None, help="Write findings as JSON Lines to file")
+    p_report.add_argument(
+        "--compare",
+        default=None,
+        metavar="PREV.json",
+        help="Diff this run against a previous report JSON; result is attached under metadata.diff",
+    )
     p_report.add_argument("--sitemap-json", default=None, help="Write sitemap links JSON to file")
     p_report.add_argument("--sitemap-csv", default=None, help="Write sitemap links CSV to file")
 
@@ -119,8 +126,24 @@ def main(argv: Optional[List[str]] = None) -> int:
     else:
         report = _run_report(args, http)
 
+    if args.compare:
+        _attach_diff(report, args.compare)
+
     _emit_outputs(report, args)
     return 0
+
+
+def _attach_diff(report: HwatReport, prev_path: str) -> None:
+    """Diff the current report against a previous one; store under metadata.diff."""
+    from .diff import diff_reports, load_report_json
+
+    try:
+        prev = load_report_json(prev_path)
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"Could not read comparison report {prev_path}: {e}") from e
+    diff = diff_reports(prev, report.to_dict())
+    if isinstance(report.metadata, dict):
+        report.metadata["diff"] = diff.to_dict()
 
 
 def _maybe_list_plugins(args: argparse.Namespace) -> Optional[int]:
@@ -194,6 +217,8 @@ def _emit_outputs(report: HwatReport, args) -> None:
         Path(args.out_json).write_text(report.to_json(indent=2), encoding="utf-8")
     if args.out_md:
         Path(args.out_md).write_text(report.to_markdown(), encoding="utf-8")
+    if args.out_html:
+        Path(args.out_html).write_text(report.to_html(), encoding="utf-8")
     if args.out_sarif:
         from .export import write_sarif
 
@@ -207,7 +232,7 @@ def _emit_outputs(report: HwatReport, args) -> None:
 
     # Default output to stdout if no report files were requested. Findings-only
     # exports (SARIF/JSONL) do not suppress the default JSON report on stdout.
-    if not any([args.out_json, args.out_md]):
+    if not any([args.out_json, args.out_md, args.out_html]):
         print(report.to_json(indent=2))
 
 
