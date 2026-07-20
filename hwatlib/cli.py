@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import importlib.util
 import json
+import sys
 from pathlib import Path
 from typing import List, Optional
 
@@ -47,6 +48,11 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     p_report.add_argument("--plugin", action="append", default=None, help="Plugin name or module:function (repeatable)")
     p_report.add_argument("--list-plugins", action="store_true", help="List registered plugins and exit")
+    p_report.add_argument(
+        "--discover-plugins",
+        action="store_true",
+        help="Load third-party plugins registered via 'hwatlib.plugins' entry points",
+    )
 
     p_report.add_argument("--nmap", action="store_true", help="Enable nmap scan (off by default)")
 
@@ -97,6 +103,13 @@ def main(argv: Optional[List[str]] = None) -> int:
 
         new_run_id("report")
         setup_logger(json_format=(args.log_format == "json"))
+
+    if args.discover_plugins:
+        from .plugins import discover_plugins
+
+        discovered = discover_plugins()
+        if discovered:
+            print(f"[+] Discovered {len(discovered)} plugin(s): {', '.join(sorted(discovered))}", file=sys.stderr)
 
     exit_code = _maybe_list_plugins(args)
     if exit_code is not None:

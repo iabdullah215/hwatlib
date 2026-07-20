@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Async plugin hooks** (`plugins.run_checks_async`): checks may now be
+  `async def`; async checks are awaited and sync checks run in a worker thread,
+  executed concurrently in the `--async` workflow. Sync `run_checks` also
+  transparently runs async checks.
+- **Entry-point plugin discovery** (`plugins.discover_plugins`): third-party
+  packages register checks via a `hwatlib.plugins` entry point and a
+  `@plugin_check(...)` metadata decorator, runnable by short name without
+  `--plugin module:function`. New `hwat report --discover-plugins` flag.
 - **HTML report output** (`HwatReport.to_html` / `hwat report --out-html`): a
   self-contained, styled report with findings grouped by severity (critical→info)
   and a risk badge; untrusted content is HTML-escaped.

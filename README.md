@@ -216,7 +216,30 @@ Plugins:
 ```bash
 hwat report example.com --list-plugins
 hwat report example.com --plugin mypkg.mychecks:check
+hwat report example.com --discover-plugins        # load third-party entry-point plugins
 ```
+
+Third-party packages can register checks via a `hwatlib.plugins` **entry point**,
+so they run by short name (no `--plugin module:function` needed). In the
+plugin package's `pyproject.toml`:
+
+```toml
+[project.entry-points."hwatlib.plugins"]
+my_check = "mypkg.checks:my_check"
+```
+
+```python
+# mypkg/checks.py
+from hwatlib.plugins import plugin_check
+
+@plugin_check("my_check", severity="high", default_enabled=True)
+async def my_check(session):          # sync or async both supported
+    return {"category": "custom", "title": "...", "severity": "high"}
+```
+
+`hwat report example.com --discover-plugins` then loads and runs it. Async
+checks are awaited (sync checks run in a worker thread); in the `--async`
+workflow, plugins run concurrently via `plugins.run_checks_async`.
 
 ### Config / Profiles
 
