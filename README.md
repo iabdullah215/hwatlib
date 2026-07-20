@@ -166,10 +166,20 @@ Generate a read-only report (JSON printed to stdout by default):
 hwat report example.com
 ```
 
-Write report outputs:
+Write report outputs (JSON, Markdown, or a styled HTML report with findings
+grouped by severity):
 
 ```bash
-hwat report example.com --out-json report.json --out-md report.md
+hwat report example.com --out-json report.json --out-md report.md --out-html report.html
+```
+
+Compare against a previous run to see what changed on the target over time. The
+diff (risk delta, findings added/removed, new/removed tech and ports) is
+attached under `metadata.diff` and rendered in the Markdown/HTML reports:
+
+```bash
+hwat report example.com --out-json today.json                 # baseline
+hwat report example.com --compare today.json --out-html diff-report.html
 ```
 
 Sitemap export:
