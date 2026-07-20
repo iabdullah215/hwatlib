@@ -46,7 +46,7 @@ async def build_report_async(
     await _add_web_async(report, session, url=url, http_options=http_options)
     _add_privesc(report)
     _add_secrets(report, secrets_paths=secrets_paths)
-    _add_plugins(report, session, plugins=plugins)
+    await _add_plugins_async(report, session, plugins=plugins)
     _add_fingerprint(report, ip)
     _add_risk(report)
 
@@ -149,6 +149,17 @@ def _add_plugins(report: HwatReport, session: HwatSession, *, plugins: Optional[
         return
     try:
         results = plugins_mod.run_checks(session, names=plugins)
+        report.plugins = sync_workflows._serialize_plugin_results(results)
+    except Exception as e:
+        logger.exception("Async plugins phase failed plugins=%s: %s", list(plugins), e)
+        report.plugins = {"ok": False, "error": str(e)}
+
+
+async def _add_plugins_async(report: HwatReport, session: HwatSession, *, plugins: Optional[Iterable[str]]) -> None:
+    if not plugins:
+        return
+    try:
+        results = await plugins_mod.run_checks_async(session, names=plugins)
         report.plugins = sync_workflows._serialize_plugin_results(results)
     except Exception as e:
         logger.exception("Async plugins phase failed plugins=%s: %s", list(plugins), e)
