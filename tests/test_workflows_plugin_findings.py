@@ -51,11 +51,10 @@ def test_build_report_async_merges_plugin_findings_into_metadata(monkeypatch):
                 ],
             }
 
-    monkeypatch.setattr(
-        workflows.plugins_mod,
-        "run_checks",
-        lambda session, names=None: {"p": FakePluginResult()},
-    )
+    async def fake_run_checks_async(session, names=None, **kwargs):
+        return {"p": FakePluginResult()}
+
+    monkeypatch.setattr(workflows.plugins_mod, "run_checks_async", fake_run_checks_async)
 
     async def fake_add_recon_async(report, session, nmap=False):
         return None
